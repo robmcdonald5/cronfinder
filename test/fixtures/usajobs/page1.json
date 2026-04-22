@@ -1,0 +1,40 @@
+{
+  "SearchResult": {
+    "SearchResultCount": 2,
+    "SearchResultCountAll": 2,
+    "SearchResultItems": [
+      {
+        "MatchedObjectId": "OBJ-1",
+        "MatchedObjectDescriptor": {
+          "PositionID": "FED-12345",
+          "PositionTitle": "IT Specialist (SYSADMIN)",
+          "OrganizationName": "U.S. Space Force",
+          "DepartmentName": "Department of the Air Force",
+          "PositionLocationDisplay": "Colorado Springs, CO",
+          "PositionRemoteIndicator": "No",
+          "ApplyURI": ["https://www.usajobs.gov/job/12345"],
+          "PublicationStartDate": "2026-04-10T00:00:00",
+          "PositionSchedule": [{ "Name": "Full-time" }],
+          "PositionRemuneration": [
+            { "MinimumRange": "95000", "MaximumRange": "125000", "RateIntervalCode": "Per Year" }
+          ],
+          "QualificationSummary": "Qualifications summary text.",
+          "UserArea": { "Details": { "JobSummary": "Full job summary text." } }
+        }
+      },
+      {
+        "MatchedObjectId": "OBJ-2",
+        "MatchedObjectDescriptor": {
+          "PositionID": "FED-67890",
+          "PositionTitle": "Software Developer",
+          "OrganizationName": "Department of Defense",
+          "PositionLocationDisplay": "Multiple Locations",
+          "PositionRemoteIndicator": "Yes",
+          "ApplyURI": ["https://www.usajobs.gov/job/67890"],
+          "PublicationStartDate": "2026-04-12T00:00:00",
+          "PositionSchedule": [{ "Name": "Full-time" }]
+        }
+      }
+    ]
+  }
+}

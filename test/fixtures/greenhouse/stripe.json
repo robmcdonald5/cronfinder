@@ -1,0 +1,28 @@
+{
+  "jobs": [
+    {
+      "id": 4001234567,
+      "internal_job_id": 3001234567,
+      "title": "Senior Software Engineer, Payments",
+      "location": { "name": "San Francisco, CA" },
+      "absolute_url": "https://job-boards.greenhouse.io/stripe/jobs/4001234567",
+      "updated_at": "2026-04-20T12:00:00Z",
+      "content": "<p>We are hiring.</p>\n<ul><li>Build payments.</li></ul>",
+      "departments": [{ "name": "Engineering" }],
+      "offices": [{ "name": "San Francisco", "location": "San Francisco, CA" }],
+      "pay_input_ranges": [
+        { "min_cents": 18000000, "max_cents": 24000000, "currency_type": "USD" }
+      ]
+    },
+    {
+      "id": 4001234568,
+      "title": "Remote Site Reliability Engineer",
+      "location": { "name": "Remote" },
+      "absolute_url": "https://job-boards.greenhouse.io/stripe/jobs/4001234568",
+      "updated_at": "2026-04-19T10:00:00Z",
+      "content": "<p>SRE role.</p>",
+      "departments": [{ "name": "Infrastructure" }],
+      "offices": []
+    }
+  ]
+}

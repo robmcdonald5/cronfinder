@@ -1,0 +1,31 @@
+{
+  "name": "cronfinder",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Scheduled Cloudflare Worker that pulls job postings from public APIs into D1 and emits a daily digest.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "dev:remote": "wrangler dev --test-scheduled --remote",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "types": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply cronfinder --local",
+    "db:migrate:remote": "wrangler d1 migrations apply cronfinder --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.14.9",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.84.1"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  }
+}

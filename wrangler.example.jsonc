@@ -1,0 +1,40 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "cronfinder",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-04-01",
+	"workers_dev": false,
+	"preview_urls": false,
+	// Two cron cadences, offset from the top of the hour to avoid CF load spikes.
+	// Fast: every 4 hours at :17 past -> Greenhouse, Lever, Ashby, USAJobs, HN, Himalayas.
+	// Slow: daily at 07:23 UTC -> Workday fan-out, Eightfold, GitHub repos, digest.
+	"triggers": {
+		"crons": [
+			"17 */4 * * *",
+			"23 7 * * *"
+		]
+	},
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "cronfinder",
+			"database_id": "REPLACE_ME_AFTER_WRANGLER_D1_CREATE",
+			"migrations_dir": "migrations"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "CACHE",
+			"id": "REPLACE_ME_AFTER_WRANGLER_KV_CREATE"
+		}
+	]
+	// Secrets (set via `wrangler secret put <NAME>`):
+	//   USAJOBS_API_KEY        - from https://developer.usajobs.gov/
+	//   USAJOBS_USER_AGENT     - your registered contact email
+	//   GITHUB_TOKEN           - Phase 3: fine-grained PAT for digest repo
+	//   DIGEST_REPO            - Phase 3: "owner/repo" for digest commits
+}

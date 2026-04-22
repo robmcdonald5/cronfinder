@@ -1,0 +1,183 @@
+import "./env";
+
+import type { Job } from "./normalize";
+import type { Deps, Logger } from "./util/deps";
+import { consoleLogger } from "./util/deps";
+import { defaultClock } from "./util/now";
+import { shouldAccept } from "./config/filters";
+import { upsertJobs, writeRunLog } from "./db";
+
+import { GREENHOUSE_TOKENS } from "./config/targets-greenhouse";
+import { LEVER_COMPANIES } from "./config/targets-lever";
+import { ASHBY_ORGS } from "./config/targets-ashby";
+import { fetchGreenhouse } from "./adapters/greenhouse";
+import { fetchLever } from "./adapters/lever";
+import { fetchAshby } from "./adapters/ashby";
+import { fetchUsaJobs } from "./adapters/usajobs";
+
+interface TaskSpec {
+  source: string;                         // e.g. "greenhouse:stripe"
+  factory: (deps: Deps) => AsyncIterable<Job>;
+}
+
+interface TaskOutcome {
+  source: string;
+  durationMs: number;
+  jobsFetched: number;
+  jobsNew: number;
+  jobsUpdated: number;
+  error?: string;
+}
+
+async function runAdapterTask(
+  spec: TaskSpec,
+  env: Env,
+  cron: "fast" | "slow",
+  nowIso: string,
+  logger: Logger,
+): Promise<TaskOutcome> {
+  const start = Date.now();
+  const deps: Deps = { fetch: globalThis.fetch.bind(globalThis), clock: defaultClock, logger };
+  const collected: Job[] = [];
+  let error: string | undefined;
+  try {
+    for await (const job of spec.factory(deps)) {
+      if (!shouldAccept(job).accept) continue;
+      collected.push(job);
+    }
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  }
+
+  let inserted = 0;
+  let updated = 0;
+  if (collected.length > 0 && !error) {
+    try {
+      const r = await upsertJobs(env.DB, collected, nowIso);
+      inserted = r.inserted;
+      updated = r.updated;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  const outcome: TaskOutcome = {
+    source: spec.source,
+    durationMs: Date.now() - start,
+    jobsFetched: collected.length,
+    jobsNew: inserted,
+    jobsUpdated: updated,
+    ...(error !== undefined ? { error } : {}),
+  };
+
+  try {
+    await writeRunLog(env.DB, {
+      runAtIso: nowIso,
+      cron,
+      source: outcome.source,
+      durationMs: outcome.durationMs,
+      jobsFetched: outcome.jobsFetched,
+      jobsNew: outcome.jobsNew,
+      jobsUpdated: outcome.jobsUpdated,
+      ...(outcome.error !== undefined ? { error: outcome.error } : {}),
+    });
+  } catch {
+    // run_log write failing shouldn't swallow the adapter outcome log.
+  }
+
+  logger.log({ t: "adapter_run", cron, ...outcome });
+  return outcome;
+}
+
+function buildFastTasks(env: Env): TaskSpec[] {
+  const tasks: TaskSpec[] = [];
+
+  for (const token of GREENHOUSE_TOKENS) {
+    tasks.push({
+      source: `greenhouse:${token}`,
+      factory: (deps) => fetchGreenhouse(token, deps),
+    });
+  }
+  for (const company of LEVER_COMPANIES) {
+    tasks.push({
+      source: `lever:${company}`,
+      factory: (deps) => fetchLever(company, deps),
+    });
+  }
+  for (const org of ASHBY_ORGS) {
+    tasks.push({
+      source: `ashby:${org}`,
+      factory: (deps) => fetchAshby(org, deps),
+    });
+  }
+
+  if (env.USAJOBS_API_KEY && env.USAJOBS_USER_AGENT) {
+    const apiKey = env.USAJOBS_API_KEY;
+    const userAgent = env.USAJOBS_USER_AGENT;
+    tasks.push({
+      source: "usajobs",
+      factory: (deps) => fetchUsaJobs({ apiKey, userAgent }, deps),
+    });
+  }
+
+  return tasks;
+}
+
+export async function runFast(
+  env: Env,
+  _ctx: ExecutionContext,
+  scheduledAt: string,
+): Promise<void> {
+  const logger = consoleLogger;
+  const started = Date.now();
+  const tasks = buildFastTasks(env);
+
+  logger.log({ t: "cron_start", cron: "fast", scheduledAt, task_count: tasks.length });
+
+  const results = await Promise.allSettled(
+    tasks.map((spec) => runAdapterTask(spec, env, "fast", scheduledAt, logger)),
+  );
+
+  let fetched = 0, inserted = 0, updated = 0, failed = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      fetched += r.value.jobsFetched;
+      inserted += r.value.jobsNew;
+      updated += r.value.jobsUpdated;
+      if (r.value.error) failed++;
+    } else {
+      failed++;
+    }
+  }
+
+  logger.log({
+    t: "cron_done",
+    cron: "fast",
+    scheduledAt,
+    duration_ms: Date.now() - started,
+    task_count: tasks.length,
+    failed_count: failed,
+    jobs_fetched: fetched,
+    jobs_new: inserted,
+    jobs_updated: updated,
+  });
+}
+
+export async function runSlow(
+  env: Env,
+  _ctx: ExecutionContext,
+  scheduledAt: string,
+): Promise<void> {
+  const started = Date.now();
+  // Phase 2 will populate this with Workday + Eightfold fan-out.
+  await env.CACHE.put("last_run:slow", scheduledAt);
+  console.log(
+    JSON.stringify({
+      t: "cron_done",
+      cron: "slow",
+      scheduledAt,
+      duration_ms: Date.now() - started,
+      task_count: 0,
+    }),
+  );
+}

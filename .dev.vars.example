@@ -1,0 +1,14 @@
+# Copy to .dev.vars for local dev. `.dev.vars` is gitignored.
+# For production, set each via: wrangler secret put <NAME>
+
+# USAJobs API (https://developer.usajobs.gov/)
+USAJOBS_API_KEY=
+USAJOBS_USER_AGENT=
+
+# Phase 3: daily digest commits
+GITHUB_TOKEN=
+DIGEST_REPO=
+
+# Phase 4: optional
+DISCORD_WEBHOOK_URL=
+API_TOKEN=

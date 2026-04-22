@@ -1,0 +1,28 @@
+[
+  {
+    "id": "abc-123-def-456",
+    "text": "Software Engineer, Platform",
+    "hostedUrl": "https://jobs.lever.co/notion/abc-123",
+    "applyUrl": "https://jobs.lever.co/notion/abc-123/apply",
+    "description": "<p>Build platform.</p>",
+    "descriptionPlain": "Build platform.",
+    "categories": {
+      "location": "New York, NY",
+      "commitment": "Full-time",
+      "team": "Platform",
+      "department": "Engineering"
+    },
+    "workplaceType": "Remote",
+    "salaryRange": { "min": 150000, "max": 220000, "currency": "USD", "interval": "year" },
+    "createdAt": 1713500000000,
+    "country": "US"
+  },
+  {
+    "id": "xyz-789",
+    "text": "Intern, Growth",
+    "hostedUrl": "https://jobs.lever.co/notion/xyz-789",
+    "description": "<p>Intern role.</p>",
+    "categories": { "location": "San Francisco, CA", "commitment": "Internship" },
+    "workplaceType": "On-site"
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "6f1e8b00-1234-5678-9abc-def012345678",
+      "title": "Research Engineer",
+      "department": "Research",
+      "team": "Alignment",
+      "employmentType": "FullTime",
+      "location": "San Francisco",
+      "secondaryLocations": [],
+      "workplaceType": null,
+      "description": "<p>Research role.</p>",
+      "descriptionPlain": "Research role.",
+      "isRemote": false,
+      "isListed": true,
+      "publishedAt": "2026-04-15T00:00:00Z",
+      "jobUrl": "https://jobs.ashbyhq.com/openai/6f1e8b00",
+      "applyUrl": "https://jobs.ashbyhq.com/openai/6f1e8b00/application",
+      "compensationTiers": [{ "salaryMin": 300000, "salaryMax": 500000, "currency": "USD" }]
+    },
+    {
+      "id": "delisted-9999",
+      "title": "Deprecated Role",
+      "location": "Remote",
+      "isListed": false,
+      "jobUrl": "https://jobs.ashbyhq.com/openai/delisted-9999"
+    }
+  ]
+}
