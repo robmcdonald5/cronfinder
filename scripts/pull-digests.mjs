@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Pull daily digests from D1 into ./digests/ (gitignored).
 // Usage:
-//   npm run pull-digests                # remote, missing only
-//   npm run pull-digests -- --force     # remote, overwrite local
-//   npm run pull-digests -- --local     # local D1 (dev smoke test)
+//   npm run pull-digests                   # remote, missing only
+//   npm run pull-digests -- --overwrite    # remote, overwrite local (npm eats --force)
+//   npm run pull-digests -- --local        # local D1 (dev smoke test)
 //
 // wrangler's --json output with --remote can be preceded by progress lines
 // (e.g. "├ Checking if file needs uploading"), so we extract the JSON array
@@ -55,7 +55,9 @@ function runWranglerJson(sql) {
 }
 
 function main() {
-  const force = process.argv.includes("--force");
+  // `--force` clashes with npm's own --force flag, which npm consumes before it
+  // reaches the script. Use `--overwrite` instead.
+  const force = process.argv.includes("--overwrite") || process.argv.includes("--force");
   if (!existsSync(DIGESTS_DIR)) mkdirSync(DIGESTS_DIR, { recursive: true });
 
   const local = new Set(
