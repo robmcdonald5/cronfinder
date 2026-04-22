@@ -237,6 +237,7 @@ export async function runSlow(
       date: digest.date,
       jobs_count: digest.jobsCount,
       total_before_filter: digest.totalBeforeFilter,
+      duplicates_collapsed: digest.duplicatesCollapsed,
       body_bytes: digest.body.length,
     });
   } catch (err) {

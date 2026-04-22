@@ -7,6 +7,7 @@
 
 import { shouldAccept } from "./config/filters";
 import type { Clearance } from "./normalize";
+import { normalizeCompany, normalizeLocation, normalizeTitle } from "./normalize";
 
 interface JobRow {
   source: string;
@@ -26,8 +27,9 @@ interface JobRow {
 interface Digest {
   date: string;              // 'YYYY-MM-DD'
   body: string;              // Markdown
-  jobsCount: number;         // count after filtering (what's in the digest)
+  jobsCount: number;         // count after dedup (what's in the digest)
   totalBeforeFilter: number; // count before filtering (new in window, any criteria)
+  duplicatesCollapsed: number; // same role on multiple sources, folded
   windowStartIso: string;
   windowEndIso: string;
 }
@@ -55,17 +57,56 @@ export async function buildDigest(
 
   const totalBeforeFilter = results.length;
   const accepted = results.filter((row) => shouldAccept(row).accept);
+  const deduped = dedupeRows(accepted);
+  const duplicatesCollapsed = accepted.length - deduped.length;
 
   const date = windowEndIso.slice(0, 10);
-  const body = renderMarkdown(accepted, windowStartIso, windowEndIso, totalBeforeFilter);
+  const body = renderMarkdown(
+    deduped,
+    windowStartIso,
+    windowEndIso,
+    totalBeforeFilter,
+    duplicatesCollapsed,
+  );
   return {
     date,
     body,
-    jobsCount: accepted.length,
+    jobsCount: deduped.length,
     totalBeforeFilter,
+    duplicatesCollapsed,
     windowStartIso,
     windowEndIso,
   };
+}
+
+// --- dedup ---------------------------------------------------------------
+
+// Lower number wins when two rows share a dedup key. Direct ATS links are
+// preferred over aggregators so the digest points at first-party apply URLs.
+function sourcePriority(source: string): number {
+  if (source === "adzuna") return 10;
+  if (source.startsWith("hn")) return 9;
+  return 0;
+}
+
+function dedupKey(row: JobRow): string {
+  return [
+    normalizeCompany(row.company),
+    normalizeTitle(row.title),
+    normalizeLocation(row.location),
+  ].join("|");
+}
+
+export function dedupeRows<T extends JobRow>(rows: readonly T[]): T[] {
+  const byKey = new Map<string, T>();
+  for (const row of rows) {
+    const k = dedupKey(row);
+    const existing = byKey.get(k);
+    if (!existing || sourcePriority(row.source) < sourcePriority(existing.source)) {
+      byKey.set(k, row);
+    }
+  }
+  return [...byKey.values()];
 }
 
 export async function storeDigest(
@@ -128,15 +169,19 @@ export function renderMarkdown(
   windowStartIso: string,
   windowEndIso: string,
   totalBeforeFilter?: number,
+  duplicatesCollapsed?: number,
 ): string {
   const date = windowEndIso.slice(0, 10);
   const lines: string[] = [];
   lines.push(`# New jobs — ${date}`);
   lines.push("");
   const total = totalBeforeFilter ?? rows.length;
+  const dupNote = duplicatesCollapsed && duplicatesCollapsed > 0
+    ? `, ${duplicatesCollapsed} cross-source duplicates collapsed`
+    : "";
   const suffix =
-    total > rows.length
-      ? ` (${rows.length} passed filters out of ${total} new).`
+    total > rows.length || duplicatesCollapsed
+      ? ` (${rows.length} unique out of ${total} new${dupNote}).`
       : ".";
   lines.push(
     `**${rows.length} new postings** between ${windowStartIso} and ${windowEndIso}${suffix}`,
