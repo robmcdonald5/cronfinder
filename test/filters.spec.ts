@@ -45,6 +45,21 @@ describe("filters.shouldAccept", () => {
     expect(r.accept).toBe(false);
   });
 
+  it.each([
+    "Python Developer",
+    "Junior Application Developer",
+    "AI Automation Engineer",
+    "Prompt Engineer",
+    "Artificial Intelligence Engineer",
+    "Agentic AI Developer",
+    "GenAi Application Developer",
+    "MLOps Engineer",
+    "Quality Engineer",
+    "Forward Deployed Engineer",
+  ])("accepts %s", (title) => {
+    expect(shouldAccept(job({ title })).accept).toBe(true);
+  });
+
   it("rejects consultancy churn companies", () => {
     expect(shouldAccept(job({ company: "Revature" })).accept).toBe(false);
     expect(shouldAccept(job({ company: "Smoothstack" })).accept).toBe(false);

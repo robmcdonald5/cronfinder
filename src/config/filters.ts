@@ -30,30 +30,48 @@ export interface FilterInput {
 // Title words that MUST appear (case-insensitive, word-boundaried).
 // At least one must match. Leave empty to skip the include check.
 const TITLE_INCLUDE: readonly string[] = [
+  // classic SWE
   "software engineer",
   "software developer",
+  "\\bdeveloper\\b",            // catches python/application/junior/associate/genai developer
   "backend",
   "back[- ]end",
   "frontend",
   "front[- ]end",
   "fullstack",
   "full[- ]stack",
+  "application engineer",
+
+  // infra / ops
   "platform engineer",
   "site reliability",
   "\\bsre\\b",
   "devops",
   "devsecops",
+  "\\bmlops\\b",
   "infrastructure engineer",
-  "solutions engineer",
-  "support engineer",
-  "systems engineer",
   "cloud engineer",
   "data engineer",
+  "systems engineer",
+  "support engineer",
+  "solutions engineer",
+  "forward deployed",
+  "quality engineer",
+  "developer advocate",
+
+  // AI / ML
   "machine learning engineer",
   "\\bml engineer\\b",
   "applied (ai|ml)",
   "ai engineer",
-  "developer advocate",
+  "artificial intelligence",
+  "agentic ai",
+  "generative ai",
+  "\\bgen\\s?ai\\b",
+  "prompt engineer",
+  "automation engineer",
+
+  // security
   "security engineer",
   "cybersecurity",
   "application security",
