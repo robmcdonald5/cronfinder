@@ -4,16 +4,21 @@ import type { Job } from "./normalize";
 import type { Deps, Logger } from "./util/deps";
 import { consoleLogger } from "./util/deps";
 import { defaultClock } from "./util/now";
+import { PerKeyThrottle } from "./util/rate-limit";
 import { shouldAccept } from "./config/filters";
 import { upsertJobs, writeRunLog } from "./db";
 
 import { GREENHOUSE_TOKENS } from "./config/targets-greenhouse";
 import { LEVER_COMPANIES } from "./config/targets-lever";
 import { ASHBY_ORGS } from "./config/targets-ashby";
+import { WORKDAY_TARGETS } from "./config/targets-workday";
+import { EIGHTFOLD_TARGETS } from "./config/targets-eightfold";
 import { fetchGreenhouse } from "./adapters/greenhouse";
 import { fetchLever } from "./adapters/lever";
 import { fetchAshby } from "./adapters/ashby";
 import { fetchUsaJobs } from "./adapters/usajobs";
+import { fetchWorkday } from "./adapters/workday";
+import { fetchEightfold } from "./adapters/eightfold";
 
 interface TaskSpec {
   source: string;                         // e.g. "greenhouse:stripe"
@@ -163,21 +168,66 @@ export async function runFast(
   });
 }
 
+function buildSlowTasks(): TaskSpec[] {
+  const tasks: TaskSpec[] = [];
+
+  // 1 req/sec per Workday tenant (keyed by tenant), unthrottled across tenants.
+  const workdayThrottle = new PerKeyThrottle(1000);
+  for (const target of WORKDAY_TARGETS) {
+    tasks.push({
+      source: `workday:${target.slug}`,
+      factory: (deps) => fetchWorkday({ target, throttle: workdayThrottle }, deps),
+    });
+  }
+
+  for (const target of EIGHTFOLD_TARGETS) {
+    tasks.push({
+      source: `eightfold:${target.slug}`,
+      factory: (deps) => fetchEightfold({ target }, deps),
+    });
+  }
+
+  return tasks;
+}
+
 export async function runSlow(
   env: Env,
   _ctx: ExecutionContext,
   scheduledAt: string,
 ): Promise<void> {
+  const logger = consoleLogger;
   const started = Date.now();
-  // Phase 2 will populate this with Workday + Eightfold fan-out.
-  await env.CACHE.put("last_run:slow", scheduledAt);
-  console.log(
-    JSON.stringify({
-      t: "cron_done",
-      cron: "slow",
-      scheduledAt,
-      duration_ms: Date.now() - started,
-      task_count: 0,
-    }),
+  const tasks = buildSlowTasks();
+
+  logger.log({ t: "cron_start", cron: "slow", scheduledAt, task_count: tasks.length });
+
+  const results = await Promise.allSettled(
+    tasks.map((spec) => runAdapterTask(spec, env, "slow", scheduledAt, logger)),
   );
+
+  let fetched = 0, inserted = 0, updated = 0, failed = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      fetched += r.value.jobsFetched;
+      inserted += r.value.jobsNew;
+      updated += r.value.jobsUpdated;
+      if (r.value.error) failed++;
+    } else {
+      failed++;
+    }
+  }
+
+  await env.CACHE.put("last_run:slow", scheduledAt);
+
+  logger.log({
+    t: "cron_done",
+    cron: "slow",
+    scheduledAt,
+    duration_ms: Date.now() - started,
+    task_count: tasks.length,
+    failed_count: failed,
+    jobs_fetched: fetched,
+    jobs_new: inserted,
+    jobs_updated: updated,
+  });
 }

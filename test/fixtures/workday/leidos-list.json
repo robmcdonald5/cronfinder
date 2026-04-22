@@ -1,0 +1,23 @@
+{
+  "total": 2,
+  "jobPostings": [
+    {
+      "title": "Systems Engineer",
+      "externalPath": "/job/Reston-VA/Systems-Engineer_R-00012345",
+      "locationsText": "Reston, VA",
+      "postedOn": "Posted 5 Days Ago",
+      "bulletFields": ["R-00012345"],
+      "jobId": "R-00012345",
+      "startDate": "2026-04-15"
+    },
+    {
+      "title": "Cloud DevOps Engineer (TS/SCI required)",
+      "externalPath": "/job/Remote/Cloud-DevOps-Engineer_R-00099999",
+      "locationsText": "Remote - US",
+      "postedOn": "Posted 2 Days Ago",
+      "bulletFields": ["R-00099999"],
+      "jobId": "R-00099999",
+      "startDate": "2026-04-18"
+    }
+  ]
+}

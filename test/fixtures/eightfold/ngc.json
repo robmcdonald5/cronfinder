@@ -1,0 +1,28 @@
+{
+  "count": 2,
+  "positions": [
+    {
+      "id": 12345,
+      "name": "Software Engineer",
+      "full_location": "Redondo Beach, CA",
+      "department": "Mission Systems",
+      "business_unit": "MS",
+      "description": "<p>Build space systems.</p><p>Top Secret clearance required.</p>",
+      "type": "Full-Time",
+      "work_location_option": "ON_SITE",
+      "display_job_id": "R10123",
+      "canonicalPositionUrl": "https://jobs.northropgrumman.com/position/12345",
+      "updated_at_ms": 1776500000000
+    },
+    {
+      "id": 67890,
+      "name": "Remote Cyber Analyst",
+      "full_location": "Remote",
+      "department": "Cyber",
+      "description": "<p>Defend systems.</p>",
+      "type": "Full-Time",
+      "work_location_option": "REMOTE",
+      "canonicalPositionUrl": "https://jobs.northropgrumman.com/position/67890"
+    }
+  ]
+}
