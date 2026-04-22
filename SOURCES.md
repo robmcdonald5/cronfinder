@@ -16,6 +16,7 @@ Inventory of every external API, infrastructure service, and build dependency cr
 | **Himalayas** | `GET https://himalayas.app/jobs/api/search?limit=100&offset=N` | None | Working | Remote-only board. 3 pages/run. Live runs return ~12 jobs per batch despite ~100k in their total count; stop early when `jobs.length < perPage`. [src/adapters/himalayas.ts](src/adapters/himalayas.ts) |
 | **HN Algolia — search** | `GET https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring` | None | Working | Finds the latest "Ask HN: Who is hiring?" thread (excluding "Who wants to be hired?"). [src/adapters/hn.ts](src/adapters/hn.ts) |
 | **HN Algolia — items** | `GET https://hn.algolia.com/api/v1/items/{story_id}` | None | Working | Returns the thread as a tree. We parse top-level children only (skip nested replies). Capped at 150 comments/run. Parsing quality is best-effort — well-formatted pipe-delimited posts parse cleanly, role-first posts put the role into `company`. Full text always preserved in `description_text`. |
+| **Adzuna** | `GET https://api.adzuna.com/v1/api/jobs/us/search/{page}?app_id=…&app_key=…&what=software&results_per_page=50` | Query-param credentials | Working when `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` secrets are set | Aggregates Indeed + other big boards under a B2B license. Keyword-narrowed server-side (`what=software`). 5 pages/run × 50 per page. `description` is a snippet, not full HTML. `salary_is_predicted` flag — predicted salaries are dropped. `redirect_url` is an Adzuna tracker link (digest dedup prefers direct-ATS rows when duplicates exist). Free tier: 1,000 calls/day (we use ~30). [src/adapters/adzuna.ts](src/adapters/adzuna.ts) |
 
 ## Cloudflare infrastructure
 
@@ -33,6 +34,8 @@ Inventory of every external API, infrastructure service, and build dependency cr
 |---|---|---|
 | `USAJOBS_API_KEY` | OPM key from developer.usajobs.gov | Required for the USAJobs adapter; if unset, the adapter is skipped |
 | `USAJOBS_USER_AGENT` | Exact email registered with OPM; must be sent as the `User-Agent` header | Same as above |
+| `ADZUNA_APP_ID` | Application id from developer.adzuna.com | Required for the Adzuna adapter; if unset, the adapter is skipped |
+| `ADZUNA_APP_KEY` | Application key from developer.adzuna.com | Same as above |
 | `GITHUB_TOKEN` | Reserved for a GitHub-backed digest destination (not used in the current local-pull architecture) | Not currently required |
 | `DIGEST_REPO` | Same | Not currently required |
 | `DISCORD_WEBHOOK_URL` | Reserved for Phase 4b dead-source alerter | Not currently required |

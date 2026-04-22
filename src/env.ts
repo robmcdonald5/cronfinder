@@ -7,6 +7,8 @@ declare global {
   interface Env {
     USAJOBS_API_KEY?: string;
     USAJOBS_USER_AGENT?: string;
+    ADZUNA_APP_ID?: string;
+    ADZUNA_APP_KEY?: string;
     GITHUB_TOKEN?: string;
     DIGEST_REPO?: string;
     DISCORD_WEBHOOK_URL?: string;

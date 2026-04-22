@@ -20,6 +20,7 @@ import { fetchWorkday } from "./adapters/workday";
 import { fetchEightfold } from "./adapters/eightfold";
 import { fetchHimalayas } from "./adapters/himalayas";
 import { fetchHn } from "./adapters/hn";
+import { fetchAdzuna } from "./adapters/adzuna";
 import { buildDigest, storeDigest } from "./digest";
 
 // Flush upserts this often so the peak in-memory Job buffer stays bounded
@@ -144,6 +145,12 @@ function buildFastTasks(env: Env): TaskSpec[] {
     const apiKey = env.USAJOBS_API_KEY;
     const userAgent = env.USAJOBS_USER_AGENT;
     tasks.push({ source: "usajobs", factory: (d) => fetchUsaJobs({ apiKey, userAgent }, d) });
+  }
+
+  if (env.ADZUNA_APP_ID && env.ADZUNA_APP_KEY) {
+    const appId = env.ADZUNA_APP_ID;
+    const appKey = env.ADZUNA_APP_KEY;
+    tasks.push({ source: "adzuna", factory: (d) => fetchAdzuna({ appId, appKey }, d) });
   }
 
   tasks.push({ source: "himalayas", factory: (d) => fetchHimalayas({}, d) });
