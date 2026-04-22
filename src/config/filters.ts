@@ -102,35 +102,53 @@ const COMPANY_EXCLUDE: readonly string[] = [
   "teksystems",
 ];
 
-// If a job's location matches any of these patterns (OR if remote is true),
-// it's acceptable. Empty array = accept any location.
+// Any US location is acceptable (the user is willing to relocate).
+// A job passes if `remote === true` OR its location string matches one of
+// these patterns OR the description doesn't explicitly say "locals only"
+// (checked separately via LOCAL_ONLY_RE below).
 const LOCATION_INCLUDE: readonly string[] = [
-  "\\btx\\b",
-  "texas",
-  "austin",
-  "dallas",
-  "houston",
-  "san antonio",
-  "fort worth",
-  "\\bdc\\b",
-  "washington",
-  "virginia",
-  "\\bva\\b",
-  "arlington",
-  "alexandria",
-  "mclean",
-  "reston",
-  "tysons",
-  "fairfax",
-  "maryland",
-  "\\bmd\\b",
-  "bethesda",
-  "anywhere",
+  // Remote / non-specific US indicators
   "remote",
+  "anywhere",
   "united states",
   "\\busa\\b",
+  "\\bus\\b",
+  "\\bu\\.s\\.?",
   "us only",
+  "us remote",
+  "north america",
+
+  // All 50 state names + DC + PR
+  "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+  "connecticut", "delaware", "district of columbia", "florida", "georgia",
+  "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas", "kentucky",
+  "louisiana", "maine", "maryland", "massachusetts", "michigan", "minnesota",
+  "mississippi", "missouri", "montana", "nebraska", "nevada", "new hampshire",
+  "new jersey", "new mexico", "new york", "north carolina", "north dakota",
+  "ohio", "oklahoma", "oregon", "pennsylvania", "puerto rico", "rhode island",
+  "south carolina", "south dakota", "tennessee", "texas", "utah", "vermont",
+  "virginia", "washington", "west virginia", "wisconsin", "wyoming",
+
+  // State codes — collision-safe as \b-bounded word (case-insensitive via the
+  // "i" flag on the combined regex; matches "CA", "ca", ", CA" etc.)
+  "\\b(AL|AK|AZ|AR|CA|CO|CT|DC|DE|FL|GA|ID|IL|KS|KY|LA|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|PA|PR|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\\b",
+
+  // State codes that collide with English words (OR/IN/ME/HI) — require a
+  // comma prefix so "remote or hybrid" doesn't accidentally hit.
+  ",\\s*(OR|IN|ME|HI)\\b",
 ];
+
+// Explicit signals that the posting rejects remote AND relocators. Reject
+// only on unambiguous phrasing — "relocation not offered" is ambiguous
+// (usually means no financial assistance, not that they won't hire).
+const LOCAL_ONLY_RE = new RegExp(
+  "(\\blocal\\s+(candidates?|applicants?|only)\\b" +
+    "|\\blocals?\\s+only\\b" +
+    "|must\\s+be\\s+local\\b" +
+    "|no\\s+remote\\s+(candidates?|applicants?|workers?|options?|work)" +
+    "|relocation\\s+(is\\s+)?not\\s+(offered|considered|accepted|available))",
+  "i",
+);
 
 // Clearance acceptance. null means "no clearance mentioned".
 const ACCEPTED_CLEARANCES: readonly (string | null)[] = [
@@ -183,8 +201,12 @@ export function shouldAccept(job: FilterInput): FilterResult {
     const isRemote = job.remote === true || job.remote === 1;
     const locMatch = job.location ? LOCATION_INCLUDE_RE.test(job.location) : false;
     if (!isRemote && !locMatch) {
-      return { accept: false, reason: "location_not_include" };
+      return { accept: false, reason: "location_not_us" };
     }
+  }
+
+  if (job.description_text && LOCAL_ONLY_RE.test(job.description_text)) {
+    return { accept: false, reason: "local_only" };
   }
 
   if (Number.isFinite(MAX_REQUIRED_YEARS) && job.description_text) {

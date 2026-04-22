@@ -70,15 +70,53 @@ describe("filters.shouldAccept", () => {
     expect(r.accept).toBe(true);
   });
 
-  it("rejects locations that are neither remote nor in the include list", () => {
-    const r = shouldAccept(job({ location: "Paris, France", remote: false }));
-    expect(r.accept).toBe(false);
-    expect(r.reason).toContain("location");
+  it("rejects locations that are neither remote nor in the US", () => {
+    expect(shouldAccept(job({ location: "Paris, France", remote: false })).accept).toBe(false);
+    expect(shouldAccept(job({ location: "London, UK", remote: false })).accept).toBe(false);
+    expect(shouldAccept(job({ location: "Toronto, ON", remote: false })).accept).toBe(false);
+    expect(shouldAccept(job({ location: "Bangalore, India", remote: false })).accept).toBe(false);
   });
 
-  it("accepts DC metro locations (Arlington, McLean)", () => {
-    expect(shouldAccept(job({ location: "Arlington, VA" })).accept).toBe(true);
-    expect(shouldAccept(job({ location: "McLean, VA" })).accept).toBe(true);
+  it.each([
+    "San Francisco, CA",
+    "Orlando, FL",
+    "Pittsburgh, PA",
+    "Portland, OR",
+    "Cincinnati, OH",
+    "Seattle, WA",
+    "Chicago, IL",
+    "Arlington, VA",
+    "McLean, VA",
+    "US-VA-Chantilly",
+    "Remote - US",
+    "United States",
+    "Anywhere in USA",
+  ])("accepts US location %s", (location) => {
+    expect(shouldAccept(job({ location, remote: false })).accept).toBe(true);
+  });
+
+  it("rejects jobs that explicitly require local candidates", () => {
+    const local = shouldAccept(job({
+      location: "Austin, TX",
+      description_text: "Local candidates only — we do not sponsor relocation.",
+    }));
+    expect(local.accept).toBe(false);
+    expect(local.reason).toBe("local_only");
+
+    const noRemote = shouldAccept(job({
+      location: "San Francisco, CA",
+      description_text: "This role is on-site; no remote candidates will be considered.",
+    }));
+    expect(noRemote.accept).toBe(false);
+    expect(noRemote.reason).toBe("local_only");
+  });
+
+  it("accepts jobs that merely decline relocation assistance (ambiguous)", () => {
+    const r = shouldAccept(job({
+      location: "Austin, TX",
+      description_text: "Relocation assistance is not provided.",
+    }));
+    expect(r.accept).toBe(true);
   });
 
   it("rejects TS/SCI clearance by default", () => {
