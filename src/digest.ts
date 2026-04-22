@@ -1,5 +1,13 @@
 // Build a daily Markdown digest of new jobs and persist it into the `digests`
 // table. Local `npm run pull-digests` later syncs it to ./digests/.
+//
+// Filtering lives in src/config/filters.ts and is applied in-memory here.
+// D1 keeps every job — edit filters.ts and re-trigger the slow cron to
+// re-filter without refetching.
+
+import type { Job } from "./normalize";
+import type { Clearance, EmploymentType } from "./normalize";
+import { shouldAccept } from "./config/filters";
 
 interface JobRow {
   source: string;
@@ -13,12 +21,36 @@ interface JobRow {
   salary_currency: string | null;
   apply_url: string;
   first_seen_at: string;
+  employment_type: string | null;
+  description_text: string | null;
+}
+
+function rowToJob(row: JobRow): Job {
+  return {
+    source: row.source,
+    external_id: "",
+    company: row.company,
+    title: row.title,
+    location: row.location,
+    remote: row.remote === null ? null : row.remote === 1,
+    employment_type: (row.employment_type ?? null) as EmploymentType,
+    department: null,
+    description_html: null,
+    description_text: row.description_text,
+    salary_min: row.salary_min,
+    salary_max: row.salary_max,
+    salary_currency: row.salary_currency,
+    clearance: (row.clearance ?? null) as Clearance,
+    apply_url: row.apply_url,
+    posted_at: null,
+  };
 }
 
 interface Digest {
   date: string;              // 'YYYY-MM-DD'
   body: string;              // Markdown
-  jobsCount: number;
+  jobsCount: number;         // count after filtering (what's in the digest)
+  totalBeforeFilter: number; // count before filtering (new in window, any criteria)
   windowStartIso: string;
   windowEndIso: string;
 }
@@ -35,7 +67,8 @@ export async function buildDigest(
   const { results } = await db
     .prepare(
       `SELECT source, company, title, location, remote, clearance,
-              salary_min, salary_max, salary_currency, apply_url, first_seen_at
+              salary_min, salary_max, salary_currency, apply_url, first_seen_at,
+              employment_type, description_text
          FROM jobs
         WHERE first_seen_at >= ? AND first_seen_at < ?
         ORDER BY source, company, title`,
@@ -43,9 +76,19 @@ export async function buildDigest(
     .bind(windowStartIso, windowEndIso)
     .all<JobRow>();
 
+  const totalBeforeFilter = results.length;
+  const accepted = results.filter((row) => shouldAccept(rowToJob(row)).accept);
+
   const date = windowEndIso.slice(0, 10);
-  const body = renderMarkdown(results, windowStartIso, windowEndIso);
-  return { date, body, jobsCount: results.length, windowStartIso, windowEndIso };
+  const body = renderMarkdown(accepted, windowStartIso, windowEndIso, totalBeforeFilter);
+  return {
+    date,
+    body,
+    jobsCount: accepted.length,
+    totalBeforeFilter,
+    windowStartIso,
+    windowEndIso,
+  };
 }
 
 export async function storeDigest(
@@ -109,18 +152,24 @@ export function renderMarkdown(
   rows: JobRow[],
   windowStartIso: string,
   windowEndIso: string,
+  totalBeforeFilter?: number,
 ): string {
   const date = windowEndIso.slice(0, 10);
   const lines: string[] = [];
   lines.push(`# New jobs — ${date}`);
   lines.push("");
+  const total = totalBeforeFilter ?? rows.length;
+  const suffix =
+    total > rows.length
+      ? ` (${rows.length} passed filters out of ${total} new).`
+      : ".";
   lines.push(
-    `**${rows.length} new postings** between ${windowStartIso} and ${windowEndIso}.`,
+    `**${rows.length} new postings** between ${windowStartIso} and ${windowEndIso}${suffix}`,
   );
   lines.push("");
 
   if (rows.length === 0) {
-    lines.push("_No new postings in this window._");
+    lines.push("_No new postings matched the filter in this window._");
     return lines.join("\n") + "\n";
   }
 

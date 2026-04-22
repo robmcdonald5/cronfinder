@@ -14,6 +14,8 @@ const SAMPLE = [
     salary_currency: "USD",
     apply_url: "https://job-boards.greenhouse.io/anthropic/jobs/1",
     first_seen_at: "2026-04-21T12:00:00Z",
+    employment_type: "full_time",
+    description_text: "Build Claude. 3+ years experience.",
   },
   {
     source: "workday:rtx",
@@ -27,6 +29,8 @@ const SAMPLE = [
     salary_currency: null,
     apply_url: "https://globalhr.wd5.myworkdayjobs.com/...",
     first_seen_at: "2026-04-21T13:00:00Z",
+    employment_type: null,
+    description_text: null,
   },
   {
     source: "usajobs",
@@ -40,6 +44,8 @@ const SAMPLE = [
     salary_currency: "USD",
     apply_url: "https://www.usajobs.gov/job/12345",
     first_seen_at: "2026-04-21T14:00:00Z",
+    employment_type: "full_time",
+    description_text: null,
   },
 ];
 

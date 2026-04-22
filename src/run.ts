@@ -5,7 +5,6 @@ import type { Deps, Logger } from "./util/deps";
 import { consoleLogger } from "./util/deps";
 import { defaultClock } from "./util/now";
 import { PerKeyThrottle } from "./util/rate-limit";
-import { shouldAccept } from "./config/filters";
 import { upsertJobs, writeRunLog } from "./db";
 
 import { GREENHOUSE_TOKENS } from "./config/targets-greenhouse";
@@ -50,7 +49,6 @@ async function runAdapterTask(
   let error: string | undefined;
   try {
     for await (const job of spec.factory(deps)) {
-      if (!shouldAccept(job).accept) continue;
       collected.push(job);
     }
   } catch (err) {
@@ -241,6 +239,7 @@ export async function runSlow(
       t: "digest_stored",
       date: digest.date,
       jobs_count: digest.jobsCount,
+      total_before_filter: digest.totalBeforeFilter,
       body_bytes: digest.body.length,
     });
   } catch (err) {
