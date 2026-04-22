@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { Job, EmploymentType } from "../normalize";
+import type { Job } from "../normalize";
+import { parseEmploymentType } from "../normalize";
 import type { Deps } from "../util/deps";
 import { retry } from "../util/retry";
 
@@ -47,6 +48,8 @@ const SearchResponse = z.object({
   }),
 });
 
+const source = "usajobs";
+
 export async function* fetchUsaJobs(
   config: UsaJobsConfig,
   deps: Deps,
@@ -72,11 +75,11 @@ export async function* fetchUsaJobs(
         },
       }),
     );
-    if (!resp.ok) throw new Error(`usajobs HTTP ${resp.status} page ${page}`);
+    if (!resp.ok) throw new Error(`${source}: HTTP ${resp.status} page=${page}`);
 
     const body = (await resp.json()) as unknown;
     const outer = SearchResponse.safeParse(body);
-    if (!outer.success) throw new Error(`usajobs shape: ${outer.error.message}`);
+    if (!outer.success) throw new Error(`${source}: shape ${outer.error.message}`);
 
     const items = outer.data.SearchResult.SearchResultItems;
     if (items.length === 0) return;
@@ -84,7 +87,7 @@ export async function* fetchUsaJobs(
     for (const raw of items) {
       const parsed = SearchItem.safeParse(raw);
       if (!parsed.success) {
-        deps.logger.log({ t: "adapter_skip", source: "usajobs", reason: parsed.error.message });
+        deps.logger.log({ t: "adapter_skip", source, reason: parsed.error.message });
         continue;
       }
       const d = parsed.data.MatchedObjectDescriptor;
@@ -95,13 +98,13 @@ export async function* fetchUsaJobs(
       const descText = d.UserArea?.Details?.JobSummary ?? d.QualificationSummary ?? null;
 
       yield {
-        source: "usajobs",
+        source,
         external_id: d.PositionID,
         company: d.OrganizationName ?? d.DepartmentName ?? "US Federal Government",
         title: d.PositionTitle,
         location: d.PositionLocationDisplay ?? null,
-        remote: parseRemote(d.PositionRemoteIndicator),
-        employment_type: parseSchedule(d.PositionSchedule?.[0]?.Name),
+        remote: parseRemoteIndicator(d.PositionRemoteIndicator),
+        employment_type: parseEmploymentType(d.PositionSchedule?.[0]?.Name),
         department: d.DepartmentName ?? null,
         description_html: null,
         description_text: descText,
@@ -119,21 +122,13 @@ export async function* fetchUsaJobs(
   }
 }
 
-function parseRemote(indicator: string | null | undefined): boolean | null {
+// USAJobs' PositionRemoteIndicator is a plain "Yes"/"No" string rather than a
+// workplaceType enum, so it gets its own parser instead of parseWorkplaceType.
+function parseRemoteIndicator(indicator: string | null | undefined): boolean | null {
   if (!indicator) return null;
   const t = indicator.toLowerCase();
   if (t === "yes") return true;
   if (t === "no") return false;
-  return null;
-}
-
-function parseSchedule(value: string | null | undefined): EmploymentType {
-  if (!value) return null;
-  const v = value.toLowerCase();
-  if (v.includes("intern")) return "intern";
-  if (v.includes("full")) return "full_time";
-  if (v.includes("part")) return "part_time";
-  if (v.includes("temp")) return "temp";
   return null;
 }
 

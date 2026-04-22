@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fetchUsaJobs } from "../../src/adapters/usajobs";
 import type { Deps } from "../../src/util/deps";
-import { defaultClock } from "../../src/util/now";
 import page1 from "../fixtures/usajobs/page1.json" with { type: "json" };
 import { jsonResponse, makeFetchStub, silentLogger } from "../helpers/fetch-stub";
 
@@ -14,7 +13,6 @@ function depsSingle(): Deps {
         return jsonResponse({ SearchResult: { SearchResultCount: 0, SearchResultCountAll: 2, SearchResultItems: [] } });
       },
     }),
-    clock: defaultClock,
     logger: silentLogger(),
   };
 }
@@ -31,7 +29,6 @@ describe("usajobs adapter", () => {
           return jsonResponse(page1);
         },
       }),
-      clock: defaultClock,
       logger: silentLogger(),
     };
     const out = [];

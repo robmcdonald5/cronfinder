@@ -66,26 +66,18 @@ function main() {
       .map((f) => f.replace(/\.md$/, "")),
   );
 
-  const idRows = runWranglerJson("SELECT id FROM digests ORDER BY id");
-  const remoteIds = idRows
-    .map((r) => r.id)
-    .filter((id) => typeof id === "string" && DATE_RE.test(id));
+  const rows = runWranglerJson("SELECT id, body FROM digests ORDER BY id");
+  const remote = rows.filter(
+    (r) => typeof r?.id === "string" && DATE_RE.test(r.id) && typeof r.body === "string",
+  );
 
-  const wanted = force ? remoteIds : remoteIds.filter((id) => !local.has(id));
+  const wanted = force ? remote : remote.filter((r) => !local.has(r.id));
   if (wanted.length === 0) {
-    console.log(
-      `digests: up to date (${remoteIds.length} remote, ${local.size} local).`,
-    );
+    console.log(`digests: up to date (${remote.length} remote, ${local.size} local).`);
     return;
   }
 
-  for (const id of wanted) {
-    const rows = runWranglerJson(`SELECT body FROM digests WHERE id = '${id}'`);
-    const body = rows[0]?.body;
-    if (typeof body !== "string") {
-      console.warn(`digests: no body for ${id}, skipping`);
-      continue;
-    }
+  for (const { id, body } of wanted) {
     const path = join(DIGESTS_DIR, `${id}.md`);
     writeFileSync(path, body, "utf-8");
     console.log(`digests: wrote ${path}`);

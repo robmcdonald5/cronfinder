@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { Job, EmploymentType } from "../normalize";
+import type { Job } from "../normalize";
+import { humanizeSlug, parseEmploymentType, parseWorkplaceType } from "../normalize";
 import type { Deps } from "../util/deps";
 import { UA_GENERIC } from "../util/ua";
 import { retry } from "../util/retry";
@@ -38,23 +39,21 @@ export async function* fetchLever(
   company: string,
   deps: Deps,
 ): AsyncIterable<Job> {
+  const source = `lever:${company}`;
   const url = `https://api.lever.co/v0/postings/${encodeURIComponent(company)}?mode=json`;
   const resp = await retry(() =>
     deps.fetch(url, { headers: { "User-Agent": UA_GENERIC, Accept: "application/json" } }),
   );
-  if (!resp.ok) {
-    throw new Error(`lever ${company} HTTP ${resp.status}`);
-  }
+  if (!resp.ok) throw new Error(`${source}: HTTP ${resp.status}`);
+
   const body = (await resp.json()) as unknown;
   const outer = LeverResponse.safeParse(body);
-  if (!outer.success) {
-    throw new Error(`lever ${company} shape: ${outer.error.message}`);
-  }
+  if (!outer.success) throw new Error(`${source}: shape ${outer.error.message}`);
 
   for (const raw of outer.data) {
     const parsed = LeverPosting.safeParse(raw);
     if (!parsed.success) {
-      deps.logger.log({ t: "adapter_skip", source: `lever:${company}`, reason: parsed.error.message });
+      deps.logger.log({ t: "adapter_skip", source, reason: parsed.error.message });
       continue;
     }
     const j = parsed.data;
@@ -62,13 +61,13 @@ export async function* fetchLever(
     if (!applyUrl) continue;
 
     yield {
-      source: `lever:${company}`,
+      source,
       external_id: j.id,
-      company: toCompany(company),
+      company: humanizeSlug(company),
       title: j.text,
       location: j.categories?.location ?? null,
-      remote: parseRemote(j.workplaceType),
-      employment_type: parseCommitment(j.categories?.commitment),
+      remote: parseWorkplaceType(j.workplaceType),
+      employment_type: parseEmploymentType(j.categories?.commitment),
       department: j.categories?.department ?? j.categories?.team ?? null,
       description_html: j.description ?? null,
       description_text: j.descriptionPlain ?? null,
@@ -80,30 +79,4 @@ export async function* fetchLever(
       posted_at: j.createdAt ? new Date(j.createdAt).toISOString() : null,
     };
   }
-}
-
-function parseRemote(workplaceType: string | null | undefined): boolean | null {
-  if (!workplaceType) return null;
-  const t = workplaceType.toLowerCase();
-  if (t === "remote") return true;
-  if (t === "on-site" || t === "onsite") return false;
-  return null;
-}
-
-function parseCommitment(value: string | null | undefined): EmploymentType {
-  if (!value) return null;
-  const v = value.toLowerCase();
-  if (v.includes("intern")) return "intern";
-  if (v.includes("full")) return "full_time";
-  if (v.includes("part")) return "part_time";
-  if (v.includes("contract")) return "contract";
-  if (v.includes("temp")) return "temp";
-  return null;
-}
-
-function toCompany(slug: string): string {
-  return slug
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
 }

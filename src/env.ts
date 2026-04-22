@@ -5,15 +5,10 @@
 
 declare global {
   interface Env {
-    // USAJobs (Phase 1)
     USAJOBS_API_KEY?: string;
     USAJOBS_USER_AGENT?: string;
-
-    // Daily digest (Phase 3)
     GITHUB_TOKEN?: string;
     DIGEST_REPO?: string;
-
-    // Alerts + optional HTTP API (Phase 4)
     DISCORD_WEBHOOK_URL?: string;
     API_TOKEN?: string;
   }

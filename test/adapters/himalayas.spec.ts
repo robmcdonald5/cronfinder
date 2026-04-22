@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fetchHimalayas } from "../../src/adapters/himalayas";
 import type { Deps } from "../../src/util/deps";
-import { defaultClock } from "../../src/util/now";
 import fixture from "../fixtures/himalayas/page0.json" with { type: "json" };
 import { jsonResponse, makeFetchStub, silentLogger } from "../helpers/fetch-stub";
 
@@ -14,7 +13,6 @@ function deps(): Deps {
         return jsonResponse({ totalCount: 2, offset: 100, limit: 100, jobs: [] });
       },
     }),
-    clock: defaultClock,
     logger: silentLogger(),
   };
 }

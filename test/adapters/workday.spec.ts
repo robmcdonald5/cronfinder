@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fetchWorkday } from "../../src/adapters/workday";
 import type { Deps } from "../../src/util/deps";
-import { defaultClock } from "../../src/util/now";
 import { PerKeyThrottle } from "../../src/util/rate-limit";
 import list from "../fixtures/workday/leidos-list.json" with { type: "json" };
 import detail from "../fixtures/workday/leidos-detail.json" with { type: "json" };
@@ -23,7 +22,6 @@ function deps(): Deps {
       "https://leidos.wd5.myworkdayjobs.com/wday/cxs/leidos/External/job/": () =>
         jsonResponse(detail),
     }),
-    clock: defaultClock,
     logger: silentLogger(),
   };
 }
@@ -90,7 +88,6 @@ describe("workday adapter", () => {
         "https://leidos.wd5.myworkdayjobs.com/wday/cxs/leidos/External/job/": () =>
           jsonResponse(detail),
       }),
-      clock: defaultClock,
       logger: silentLogger(),
     };
     for await (const _ of fetchWorkday(

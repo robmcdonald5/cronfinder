@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fetchHn } from "../../src/adapters/hn";
 import type { Deps } from "../../src/util/deps";
-import { defaultClock } from "../../src/util/now";
 import search from "../fixtures/hn/search.json" with { type: "json" };
 import items from "../fixtures/hn/items.json" with { type: "json" };
 import { jsonResponse, makeFetchStub, silentLogger } from "../helpers/fetch-stub";
@@ -12,7 +11,6 @@ function deps(): Deps {
       "https://hn.algolia.com/api/v1/search_by_date": () => jsonResponse(search),
       "https://hn.algolia.com/api/v1/items/47601859": () => jsonResponse(items),
     }),
-    clock: defaultClock,
     logger: silentLogger(),
   };
 }

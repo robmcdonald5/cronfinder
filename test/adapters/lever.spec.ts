@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fetchLever } from "../../src/adapters/lever";
 import type { Deps } from "../../src/util/deps";
-import { defaultClock } from "../../src/util/now";
 import fixture from "../fixtures/lever/notion.json" with { type: "json" };
 import { jsonResponse, makeFetchStub, silentLogger } from "../helpers/fetch-stub";
 
@@ -10,7 +9,6 @@ function deps(): Deps {
     fetch: makeFetchStub({
       "https://api.lever.co/v0/postings/notion": () => jsonResponse(fixture),
     }),
-    clock: defaultClock,
     logger: silentLogger(),
   };
 }

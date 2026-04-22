@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "../src/digest";
 
-const SAMPLE = [
+type Row = Parameters<typeof renderMarkdown>[0][number];
+
+const SAMPLE: Row[] = [
   {
     source: "greenhouse:anthropic",
     company: "Anthropic",
@@ -14,7 +16,6 @@ const SAMPLE = [
     salary_currency: "USD",
     apply_url: "https://job-boards.greenhouse.io/anthropic/jobs/1",
     first_seen_at: "2026-04-21T12:00:00Z",
-    employment_type: "full_time",
     description_text: "Build Claude. 3+ years experience.",
   },
   {
@@ -29,7 +30,6 @@ const SAMPLE = [
     salary_currency: null,
     apply_url: "https://globalhr.wd5.myworkdayjobs.com/...",
     first_seen_at: "2026-04-21T13:00:00Z",
-    employment_type: null,
     description_text: null,
   },
   {
@@ -44,7 +44,6 @@ const SAMPLE = [
     salary_currency: "USD",
     apply_url: "https://www.usajobs.gov/job/12345",
     first_seen_at: "2026-04-21T14:00:00Z",
-    employment_type: "full_time",
     description_text: null,
   },
 ];
@@ -78,7 +77,7 @@ describe("digest renderMarkdown", () => {
   });
 
   it("groups multiple jobs from the same company", () => {
-    const two = [SAMPLE[0]!, { ...SAMPLE[0]!, title: "Research Engineer, Scaling" }];
+    const two: Row[] = [SAMPLE[0]!, { ...SAMPLE[0]!, title: "Research Engineer, Scaling" }];
     const md = renderMarkdown(two, "2026-04-20T23:07:00Z", "2026-04-21T23:07:00Z");
     expect(md).toContain("### Anthropic — 2 new");
   });

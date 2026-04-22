@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fetchGreenhouse } from "../../src/adapters/greenhouse";
 import type { Deps } from "../../src/util/deps";
-import { defaultClock } from "../../src/util/now";
 import fixture from "../fixtures/greenhouse/stripe.json" with { type: "json" };
 import { jsonResponse, makeFetchStub, silentLogger } from "../helpers/fetch-stub";
 
@@ -11,7 +10,6 @@ function deps(): Deps {
       "https://boards-api.greenhouse.io/v1/boards/stripe/jobs": () =>
         jsonResponse(fixture),
     }),
-    clock: defaultClock,
     logger: silentLogger(),
   };
 }
@@ -51,7 +49,6 @@ describe("greenhouse adapter", () => {
         "https://boards-api.greenhouse.io/v1/boards/stripe": () =>
           new Response("not found", { status: 404 }),
       }),
-      clock: defaultClock,
       logger: silentLogger(),
     };
     await expect(async () => {

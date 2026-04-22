@@ -3,9 +3,9 @@ import "./env";
 import type { Job } from "./normalize";
 import type { Deps, Logger } from "./util/deps";
 import { consoleLogger } from "./util/deps";
-import { defaultClock } from "./util/now";
 import { PerKeyThrottle } from "./util/rate-limit";
-import { upsertJobs, writeRunLog } from "./db";
+import type { RunLogEntry } from "./db";
+import { upsertJobs, writeRunLogBatch } from "./db";
 
 import { GREENHOUSE_TOKENS } from "./config/targets-greenhouse";
 import { LEVER_COMPANIES } from "./config/targets-lever";
@@ -22,8 +22,13 @@ import { fetchHimalayas } from "./adapters/himalayas";
 import { fetchHn } from "./adapters/hn";
 import { buildDigest, storeDigest } from "./digest";
 
+// Flush upserts this often so the peak in-memory Job buffer stays bounded
+// regardless of how many postings an adapter yields. 50 matches upsertJobs
+// chunk size so a full buffer is exactly one db.batch subrequest.
+const FLUSH_EVERY = 50;
+
 interface TaskSpec {
-  source: string;                         // e.g. "greenhouse:stripe"
+  source: string;
   factory: (deps: Deps) => AsyncIterable<Job>;
 }
 
@@ -39,102 +44,131 @@ interface TaskOutcome {
 async function runAdapterTask(
   spec: TaskSpec,
   env: Env,
-  cron: "fast" | "slow",
-  nowIso: string,
   logger: Logger,
+  nowIso: string,
 ): Promise<TaskOutcome> {
   const start = Date.now();
-  const deps: Deps = { fetch: globalThis.fetch.bind(globalThis), clock: defaultClock, logger };
-  const collected: Job[] = [];
-  let error: string | undefined;
-  try {
-    for await (const job of spec.factory(deps)) {
-      collected.push(job);
-    }
-  } catch (err) {
-    error = err instanceof Error ? err.message : String(err);
-  }
-
+  const deps: Deps = { fetch: globalThis.fetch.bind(globalThis), logger };
+  let buffer: Job[] = [];
+  let fetched = 0;
   let inserted = 0;
   let updated = 0;
-  if (collected.length > 0 && !error) {
-    try {
-      const r = await upsertJobs(env.DB, collected, nowIso);
-      inserted = r.inserted;
-      updated = r.updated;
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+  let error: string | undefined;
+
+  const flush = async () => {
+    if (buffer.length === 0) return;
+    const r = await upsertJobs(env.DB, buffer, nowIso);
+    inserted += r.inserted;
+    updated += r.updated;
+    buffer = [];
+  };
+
+  try {
+    for await (const job of spec.factory(deps)) {
+      fetched++;
+      buffer.push(job);
+      if (buffer.length >= FLUSH_EVERY) await flush();
     }
+    await flush();
+  } catch (err) {
+    // Drop the partial buffer on purpose — the next cron will re-fetch.
+    error = err instanceof Error ? err.message : String(err);
   }
 
   const outcome: TaskOutcome = {
     source: spec.source,
     durationMs: Date.now() - start,
-    jobsFetched: collected.length,
+    jobsFetched: fetched,
     jobsNew: inserted,
     jobsUpdated: updated,
     ...(error !== undefined ? { error } : {}),
   };
-
-  try {
-    await writeRunLog(env.DB, {
-      runAtIso: nowIso,
-      cron,
-      source: outcome.source,
-      durationMs: outcome.durationMs,
-      jobsFetched: outcome.jobsFetched,
-      jobsNew: outcome.jobsNew,
-      jobsUpdated: outcome.jobsUpdated,
-      ...(outcome.error !== undefined ? { error: outcome.error } : {}),
-    });
-  } catch {
-    // run_log write failing shouldn't swallow the adapter outcome log.
-  }
-
-  logger.log({ t: "adapter_run", cron, ...outcome });
+  logger.log({ t: "adapter_run", ...outcome });
   return outcome;
+}
+
+function toRunLogEntries(
+  outcomes: readonly TaskOutcome[],
+  cron: "fast" | "slow",
+  nowIso: string,
+): RunLogEntry[] {
+  return outcomes.map((o) => ({
+    runAtIso: nowIso,
+    cron,
+    source: o.source,
+    durationMs: o.durationMs,
+    jobsFetched: o.jobsFetched,
+    jobsNew: o.jobsNew,
+    jobsUpdated: o.jobsUpdated,
+    ...(o.error !== undefined ? { error: o.error } : {}),
+  }));
+}
+
+function summarize(
+  outcomes: readonly PromiseSettledResult<TaskOutcome>[],
+): { fetched: number; inserted: number; updated: number; failed: number } {
+  let fetched = 0, inserted = 0, updated = 0, failed = 0;
+  for (const r of outcomes) {
+    if (r.status === "fulfilled") {
+      fetched += r.value.jobsFetched;
+      inserted += r.value.jobsNew;
+      updated += r.value.jobsUpdated;
+      if (r.value.error) failed++;
+    } else {
+      failed++;
+    }
+  }
+  return { fetched, inserted, updated, failed };
+}
+
+function fulfilledOutcomes(
+  results: readonly PromiseSettledResult<TaskOutcome>[],
+): TaskOutcome[] {
+  return results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
 }
 
 function buildFastTasks(env: Env): TaskSpec[] {
   const tasks: TaskSpec[] = [];
 
   for (const token of GREENHOUSE_TOKENS) {
-    tasks.push({
-      source: `greenhouse:${token}`,
-      factory: (deps) => fetchGreenhouse(token, deps),
-    });
+    tasks.push({ source: `greenhouse:${token}`, factory: (d) => fetchGreenhouse(token, d) });
   }
   for (const company of LEVER_COMPANIES) {
-    tasks.push({
-      source: `lever:${company}`,
-      factory: (deps) => fetchLever(company, deps),
-    });
+    tasks.push({ source: `lever:${company}`, factory: (d) => fetchLever(company, d) });
   }
   for (const org of ASHBY_ORGS) {
-    tasks.push({
-      source: `ashby:${org}`,
-      factory: (deps) => fetchAshby(org, deps),
-    });
+    tasks.push({ source: `ashby:${org}`, factory: (d) => fetchAshby(org, d) });
   }
 
   if (env.USAJOBS_API_KEY && env.USAJOBS_USER_AGENT) {
     const apiKey = env.USAJOBS_API_KEY;
     const userAgent = env.USAJOBS_USER_AGENT;
-    tasks.push({
-      source: "usajobs",
-      factory: (deps) => fetchUsaJobs({ apiKey, userAgent }, deps),
-    });
+    tasks.push({ source: "usajobs", factory: (d) => fetchUsaJobs({ apiKey, userAgent }, d) });
   }
 
-  tasks.push({
-    source: "himalayas",
-    factory: (deps) => fetchHimalayas({}, deps),
-  });
+  tasks.push({ source: "himalayas", factory: (d) => fetchHimalayas({}, d) });
+  tasks.push({ source: "hn", factory: (d) => fetchHn({}, d) });
 
-  tasks.push({
-    source: "hn",
-    factory: (deps) => fetchHn({}, deps),
-  });
+  return tasks;
+}
+
+function buildSlowTasks(): TaskSpec[] {
+  const tasks: TaskSpec[] = [];
+
+  // 1 req/sec per Workday tenant (keyed by tenant), unthrottled across tenants.
+  const workdayThrottle = new PerKeyThrottle(1000);
+  for (const target of WORKDAY_TARGETS) {
+    tasks.push({
+      source: `workday:${target.slug}`,
+      factory: (d) => fetchWorkday({ target, throttle: workdayThrottle }, d),
+    });
+  }
+  for (const target of EIGHTFOLD_TARGETS) {
+    tasks.push({
+      source: `eightfold:${target.slug}`,
+      factory: (d) => fetchEightfold({ target }, d),
+    });
+  }
 
   return tasks;
 }
@@ -151,54 +185,27 @@ export async function runFast(
   logger.log({ t: "cron_start", cron: "fast", scheduledAt, task_count: tasks.length });
 
   const results = await Promise.allSettled(
-    tasks.map((spec) => runAdapterTask(spec, env, "fast", scheduledAt, logger)),
+    tasks.map((spec) => runAdapterTask(spec, env, logger, scheduledAt)),
   );
 
-  let fetched = 0, inserted = 0, updated = 0, failed = 0;
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      fetched += r.value.jobsFetched;
-      inserted += r.value.jobsNew;
-      updated += r.value.jobsUpdated;
-      if (r.value.error) failed++;
-    } else {
-      failed++;
-    }
+  try {
+    await writeRunLogBatch(env.DB, toRunLogEntries(fulfilledOutcomes(results), "fast", scheduledAt));
+  } catch (err) {
+    logger.log({ t: "run_log_error", error: err instanceof Error ? err.message : String(err) });
   }
 
+  const sum = summarize(results);
   logger.log({
     t: "cron_done",
     cron: "fast",
     scheduledAt,
     duration_ms: Date.now() - started,
     task_count: tasks.length,
-    failed_count: failed,
-    jobs_fetched: fetched,
-    jobs_new: inserted,
-    jobs_updated: updated,
+    failed_count: sum.failed,
+    jobs_fetched: sum.fetched,
+    jobs_new: sum.inserted,
+    jobs_updated: sum.updated,
   });
-}
-
-function buildSlowTasks(): TaskSpec[] {
-  const tasks: TaskSpec[] = [];
-
-  // 1 req/sec per Workday tenant (keyed by tenant), unthrottled across tenants.
-  const workdayThrottle = new PerKeyThrottle(1000);
-  for (const target of WORKDAY_TARGETS) {
-    tasks.push({
-      source: `workday:${target.slug}`,
-      factory: (deps) => fetchWorkday({ target, throttle: workdayThrottle }, deps),
-    });
-  }
-
-  for (const target of EIGHTFOLD_TARGETS) {
-    tasks.push({
-      source: `eightfold:${target.slug}`,
-      factory: (deps) => fetchEightfold({ target }, deps),
-    });
-  }
-
-  return tasks;
 }
 
 export async function runSlow(
@@ -213,25 +220,15 @@ export async function runSlow(
   logger.log({ t: "cron_start", cron: "slow", scheduledAt, task_count: tasks.length });
 
   const results = await Promise.allSettled(
-    tasks.map((spec) => runAdapterTask(spec, env, "slow", scheduledAt, logger)),
+    tasks.map((spec) => runAdapterTask(spec, env, logger, scheduledAt)),
   );
 
-  let fetched = 0, inserted = 0, updated = 0, failed = 0;
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      fetched += r.value.jobsFetched;
-      inserted += r.value.jobsNew;
-      updated += r.value.jobsUpdated;
-      if (r.value.error) failed++;
-    } else {
-      failed++;
-    }
+  try {
+    await writeRunLogBatch(env.DB, toRunLogEntries(fulfilledOutcomes(results), "slow", scheduledAt));
+  } catch (err) {
+    logger.log({ t: "run_log_error", error: err instanceof Error ? err.message : String(err) });
   }
 
-  await env.CACHE.put("last_run:slow", scheduledAt);
-
-  // Build + persist the daily digest. Errors here shouldn't hide the cron
-  // summary, so isolate them.
   try {
     const digest = await buildDigest(env.DB, scheduledAt);
     await storeDigest(env.DB, digest, scheduledAt);
@@ -249,15 +246,16 @@ export async function runSlow(
     });
   }
 
+  const sum = summarize(results);
   logger.log({
     t: "cron_done",
     cron: "slow",
     scheduledAt,
     duration_ms: Date.now() - started,
     task_count: tasks.length,
-    failed_count: failed,
-    jobs_fetched: fetched,
-    jobs_new: inserted,
-    jobs_updated: updated,
+    failed_count: sum.failed,
+    jobs_fetched: sum.fetched,
+    jobs_new: sum.inserted,
+    jobs_updated: sum.updated,
   });
 }

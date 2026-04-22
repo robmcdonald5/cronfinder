@@ -1,5 +1,5 @@
-// Canonical Job shape emitted by every adapter. db.upsertJob derives id,
-// timestamps, and raw_hash from this shape.
+// Canonical Job shape emitted by every adapter. db.upsertJob derives id and
+// timestamps from this shape.
 
 export type Clearance = "public_trust" | "secret" | "top_secret" | "ts_sci" | null;
 export type EmploymentType =
@@ -74,4 +74,53 @@ export function normalizeLocation(value: string | null): string {
     .replace(/\s+/g, " ")
     .trim();
   return US_STATE_ABBREV[lowered] ?? lowered;
+}
+
+// "general-catalyst" -> "General Catalyst". Used by adapters where the
+// API slug is all we have for the company name.
+export function humanizeSlug(slug: string): string {
+  return slug
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// Parse an ATS "workplaceType" style field — Lever / Ashby / Eightfold all
+// surface strings like "Remote", "onsite", "REMOTE", "ON_SITE", "hybrid".
+// Workday instead hides this inside locations text, which parseRemoteFromLocation
+// (inlined in workday.ts) handles separately.
+export function parseWorkplaceType(value: string | null | undefined): boolean | null {
+  if (!value) return null;
+  const t = value.toLowerCase();
+  if (t.includes("remote")) return true;
+  if (t.includes("onsite") || t.includes("on-site") || t.includes("on_site")) return false;
+  return null;
+}
+
+// Tolerant employment-type matcher for Lever ("Full-time"), Himalayas
+// ("Full Time"), Ashby ("FullTime"), USAJobs ("Full-time"), etc. Returns null
+// rather than throwing on unknowns.
+export function parseEmploymentType(value: string | null | undefined): EmploymentType {
+  if (!value) return null;
+  const v = value.toLowerCase();
+  if (v.includes("intern")) return "intern";
+  if (v.includes("full")) return "full_time";
+  if (v.includes("part")) return "part_time";
+  if (v.includes("contract")) return "contract";
+  if (v.includes("temp")) return "temp";
+  return null;
+}
+
+// Heuristic clearance detection from title + description text. Called by
+// Workday and Eightfold adapters against defense-prime postings.
+export function parseClearance(
+  title: string,
+  description: string | null | undefined,
+): Clearance {
+  const blob = `${title} ${description ?? ""}`.toLowerCase();
+  if (/ts\s*\/\s*sci|top\s*secret\s*\/\s*sci/.test(blob)) return "ts_sci";
+  if (/top\s*secret/.test(blob)) return "top_secret";
+  if (/\bsecret\b/.test(blob)) return "secret";
+  if (/public\s*trust/.test(blob)) return "public_trust";
+  return null;
 }

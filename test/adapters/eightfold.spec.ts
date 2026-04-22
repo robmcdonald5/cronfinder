@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fetchEightfold } from "../../src/adapters/eightfold";
 import type { Deps } from "../../src/util/deps";
-import { defaultClock } from "../../src/util/now";
 import fixture from "../fixtures/eightfold/ngc.json" with { type: "json" };
 import { jsonResponse, makeFetchStub, silentLogger } from "../helpers/fetch-stub";
 
@@ -21,7 +20,6 @@ function deps(): Deps {
         return jsonResponse({ count: 2, positions: [] });
       },
     }),
-    clock: defaultClock,
     logger: silentLogger(),
   };
 }
@@ -62,7 +60,6 @@ describe("eightfold adapter", () => {
           return jsonResponse(fixture);
         },
       }),
-      clock: defaultClock,
       logger: silentLogger(),
     };
     for await (const _ of fetchEightfold({ target: TARGET }, countingDeps)) void _;

@@ -1,8 +1,10 @@
 import { z } from "zod";
-import type { Job, Clearance } from "../normalize";
+import type { Job } from "../normalize";
+import { parseClearance, parseWorkplaceType } from "../normalize";
 import type { Deps } from "../util/deps";
 import { UA_BROWSER } from "../util/ua";
 import { retry } from "../util/retry";
+import { stripHtml } from "../util/html";
 import type { EightfoldTarget } from "../config/targets-eightfold";
 
 const Position = z.object({
@@ -21,7 +23,7 @@ const Position = z.object({
   updated_at_ms: z.number().nullish(),
 });
 
-const Response = z.object({
+const ResponseSchema = z.object({
   count: z.number().nullish(),
   positions: z.array(z.unknown()),
 });
@@ -39,6 +41,7 @@ export async function* fetchEightfold(
   const { target } = config;
   const perPage = config.perPage ?? 50;
   const maxPages = config.maxPages ?? 4;
+  const source = `eightfold:${target.slug}`;
 
   for (let page = 0; page < maxPages; page++) {
     const start = page * perPage;
@@ -48,11 +51,11 @@ export async function* fetchEightfold(
         headers: { "User-Agent": UA_BROWSER, Accept: "application/json" },
       }),
     );
-    if (!resp.ok) throw new Error(`eightfold ${target.slug} HTTP ${resp.status} start=${start}`);
+    if (!resp.ok) throw new Error(`${source}: HTTP ${resp.status} start=${start}`);
 
     const body = (await resp.json()) as unknown;
-    const parsed = Response.safeParse(body);
-    if (!parsed.success) throw new Error(`eightfold ${target.slug} shape: ${parsed.error.message}`);
+    const parsed = ResponseSchema.safeParse(body);
+    if (!parsed.success) throw new Error(`${source}: shape ${parsed.error.message}`);
 
     const positions = parsed.data.positions;
     if (positions.length === 0) return;
@@ -60,19 +63,19 @@ export async function* fetchEightfold(
     for (const raw of positions) {
       const p = Position.safeParse(raw);
       if (!p.success) {
-        deps.logger.log({ t: "adapter_skip", source: `eightfold:${target.slug}`, reason: p.error.message });
+        deps.logger.log({ t: "adapter_skip", source, reason: p.error.message });
         continue;
       }
       const pos = p.data;
       const applyUrl = pos.canonicalPositionUrl ?? `https://${target.host}/position/${pos.id}`;
 
       yield {
-        source: `eightfold:${target.slug}`,
+        source,
         external_id: String(pos.id),
         company: target.company,
         title: pos.name,
         location: pos.full_location ?? pos.location ?? null,
-        remote: parseRemote(pos.work_location_option),
+        remote: parseWorkplaceType(pos.work_location_option),
         employment_type: null,
         department: pos.department ?? pos.business_unit ?? null,
         description_html: pos.description ?? null,
@@ -92,36 +95,4 @@ export async function* fetchEightfold(
 
     if (positions.length < perPage) return;
   }
-}
-
-function parseRemote(opt: string | null | undefined): boolean | null {
-  if (!opt) return null;
-  const v = opt.toLowerCase();
-  if (v.includes("remote")) return true;
-  if (v.includes("on_site") || v.includes("onsite")) return false;
-  return null;
-}
-
-function parseClearance(title: string, description: string | null | undefined): Clearance {
-  const blob = `${title} ${description ?? ""}`.toLowerCase();
-  if (/ts\s*\/\s*sci|top\s*secret\s*\/\s*sci/.test(blob)) return "ts_sci";
-  if (/top\s*secret/.test(blob)) return "top_secret";
-  if (/\bsecret\b/.test(blob)) return "secret";
-  if (/public\s*trust/.test(blob)) return "public_trust";
-  return null;
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
 }

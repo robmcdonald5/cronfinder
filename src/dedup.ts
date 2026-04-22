@@ -1,6 +1,7 @@
-// Phase 1: primary-key dedup is handled by `ON CONFLICT(source, external_id)`
-// in db.upsertJob. This file exists so Phase 3 can plug in the cross-source
-// dedup hash without widespread refactoring.
+// Cross-source dedup hash builder. Emitted when the same role appears on
+// multiple ATSes (same normalized company/title/location) so a future
+// join table can fold them into one canonical job. Not wired into the
+// upsert path today — db.ts dedups on (source, external_id) only.
 
 import type { Job } from "./normalize";
 import { sha256Hex } from "./util/hash";

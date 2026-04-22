@@ -1,12 +1,12 @@
 import { z } from "zod";
 import type { Job } from "../normalize";
+import { parseClearance } from "../normalize";
 import type { Deps } from "../util/deps";
 import { UA_BROWSER } from "../util/ua";
 import { retry } from "../util/retry";
 import { PerKeyThrottle } from "../util/rate-limit";
+import { stripHtml } from "../util/html";
 import type { WorkdayTarget } from "../config/targets-workday";
-
-// ---- response shapes --------------------------------------------------------
 
 const ListPosting = z.object({
   title: z.string().min(1),
@@ -39,8 +39,6 @@ const DetailResponse = z.object({
     .nullish(),
 });
 
-// ---- adapter ---------------------------------------------------------------
-
 export interface WorkdayConfig {
   target: WorkdayTarget;
   throttle: PerKeyThrottle;     // shared instance, keyed by tenant
@@ -55,6 +53,7 @@ export async function* fetchWorkday(
   const { target, throttle } = config;
   const listLimit = config.listLimit ?? 20;
   const maxPostings = config.maxPostings ?? 20;
+  const source = `workday:${target.slug}`;
 
   const base = `https://${target.tenant}.wd${target.wdN}.myworkdayjobs.com/wday/cxs/${target.tenant}/${target.site}`;
   const headers = {
@@ -71,26 +70,22 @@ export async function* fetchWorkday(
       body: JSON.stringify({ appliedFacets: {}, limit: listLimit, offset: 0, searchText: "" }),
     }),
   );
-  if (!listResp.ok) {
-    throw new Error(`workday ${target.slug} list HTTP ${listResp.status}`);
-  }
+  if (!listResp.ok) throw new Error(`${source}: list HTTP ${listResp.status}`);
 
   const listJson = (await listResp.json()) as unknown;
   const listParsed = ListResponse.safeParse(listJson);
-  if (!listParsed.success) {
-    throw new Error(`workday ${target.slug} list shape: ${listParsed.error.message}`);
-  }
+  if (!listParsed.success) throw new Error(`${source}: list shape ${listParsed.error.message}`);
 
   const postings = listParsed.data.jobPostings.slice(0, maxPostings);
   for (const raw of postings) {
     const p = ListPosting.safeParse(raw);
     if (!p.success) {
-      deps.logger.log({ t: "adapter_skip", source: `workday:${target.slug}`, reason: p.error.message });
+      deps.logger.log({ t: "adapter_skip", source, reason: p.error.message });
       continue;
     }
     const posting = p.data;
 
-    // Fetch detail for description. One-per-tenant throttle keeps us ~1 req/sec.
+    // One-per-tenant throttle keeps us ~1 req/sec to avoid Workday's bot detection.
     await throttle.wait(target.tenant);
     let description: string | null = null;
     try {
@@ -105,7 +100,7 @@ export async function* fetchWorkday(
     } catch (err) {
       deps.logger.log({
         t: "adapter_warn",
-        source: `workday:${target.slug}`,
+        source,
         reason: `detail fetch failed: ${err instanceof Error ? err.message : String(err)}`,
         externalPath: posting.externalPath,
       });
@@ -115,12 +110,12 @@ export async function* fetchWorkday(
     const applyUrl = `https://${target.tenant}.wd${target.wdN}.myworkdayjobs.com/${target.site}${posting.externalPath}`;
 
     yield {
-      source: `workday:${target.slug}`,
+      source,
       external_id: externalId,
       company: target.company,
       title: posting.title,
       location: posting.locationsText ?? null,
-      remote: parseRemoteFromLocation(posting.locationsText),
+      remote: /remote/i.test(posting.locationsText ?? "") ? true : null,
       employment_type: null,
       department: null,
       description_html: description,
@@ -133,37 +128,4 @@ export async function* fetchWorkday(
       posted_at: posting.startDate ?? null,
     };
   }
-}
-
-function parseRemoteFromLocation(location: string | null | undefined): boolean | null {
-  if (!location) return null;
-  if (/remote/i.test(location)) return true;
-  return null;
-}
-
-function parseClearance(
-  title: string,
-  description: string | null,
-): "public_trust" | "secret" | "top_secret" | "ts_sci" | null {
-  const blob = `${title} ${description ?? ""}`.toLowerCase();
-  if (/ts\s*\/\s*sci|top\s*secret\s*\/\s*sci/.test(blob)) return "ts_sci";
-  if (/top\s*secret/.test(blob)) return "top_secret";
-  if (/\bsecret\b/.test(blob)) return "secret";
-  if (/public\s*trust/.test(blob)) return "public_trust";
-  return null;
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
 }

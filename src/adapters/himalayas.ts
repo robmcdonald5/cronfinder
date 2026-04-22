@@ -1,8 +1,10 @@
 import { z } from "zod";
-import type { Job, EmploymentType } from "../normalize";
+import type { Job } from "../normalize";
+import { parseEmploymentType } from "../normalize";
 import type { Deps } from "../util/deps";
 import { UA_GENERIC } from "../util/ua";
 import { retry } from "../util/retry";
+import { stripHtml } from "../util/html";
 
 const HimalayasJob = z.object({
   title: z.string().min(1),
@@ -30,6 +32,8 @@ export interface HimalayasConfig {
   perPage?: number;    // default 100
 }
 
+const source = "himalayas";
+
 export async function* fetchHimalayas(
   config: HimalayasConfig,
   deps: Deps,
@@ -43,11 +47,11 @@ export async function* fetchHimalayas(
     const resp = await retry(() =>
       deps.fetch(url, { headers: { "User-Agent": UA_GENERIC, Accept: "application/json" } }),
     );
-    if (!resp.ok) throw new Error(`himalayas HTTP ${resp.status} offset=${offset}`);
+    if (!resp.ok) throw new Error(`${source}: HTTP ${resp.status} offset=${offset}`);
 
     const body = (await resp.json()) as unknown;
     const parsed = HimalayasResponse.safeParse(body);
-    if (!parsed.success) throw new Error(`himalayas shape: ${parsed.error.message}`);
+    if (!parsed.success) throw new Error(`${source}: shape ${parsed.error.message}`);
 
     const jobs = parsed.data.jobs;
     if (jobs.length === 0) return;
@@ -55,7 +59,7 @@ export async function* fetchHimalayas(
     for (const raw of jobs) {
       const p = HimalayasJob.safeParse(raw);
       if (!p.success) {
-        deps.logger.log({ t: "adapter_skip", source: "himalayas", reason: p.error.message });
+        deps.logger.log({ t: "adapter_skip", source, reason: p.error.message });
         continue;
       }
       const j = p.data;
@@ -63,7 +67,7 @@ export async function* fetchHimalayas(
       if (!applyUrl) continue;
 
       yield {
-        source: "himalayas",
+        source,
         external_id: j.guid,
         company: j.companyName,
         title: j.title,
@@ -84,30 +88,4 @@ export async function* fetchHimalayas(
 
     if (jobs.length < perPage) return;
   }
-}
-
-function parseEmploymentType(value: string | null | undefined): EmploymentType {
-  if (!value) return null;
-  const v = value.toLowerCase();
-  if (v.includes("intern")) return "intern";
-  if (v.includes("full")) return "full_time";
-  if (v.includes("part")) return "part_time";
-  if (v.includes("contract")) return "contract";
-  if (v.includes("temp")) return "temp";
-  return null;
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
 }

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fetchAshby } from "../../src/adapters/ashby";
 import type { Deps } from "../../src/util/deps";
-import { defaultClock } from "../../src/util/now";
 import fixture from "../fixtures/ashby/openai.json" with { type: "json" };
 import { jsonResponse, makeFetchStub, silentLogger } from "../helpers/fetch-stub";
 
@@ -10,7 +9,6 @@ function deps(): Deps {
     fetch: makeFetchStub({
       "https://api.ashbyhq.com/posting-api/job-board/openai": () => jsonResponse(fixture),
     }),
-    clock: defaultClock,
     logger: silentLogger(),
   };
 }

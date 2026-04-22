@@ -2,15 +2,30 @@
 // every job so changes here are a restart-cheap config tweak, not a data
 // migration. To reset criteria, edit this file and re-run the slow cron
 // (or call buildDigest again manually).
+//
+// Entries in TITLE_INCLUDE / TITLE_EXCLUDE / LOCATION_INCLUDE are RegExp
+// fragments, not literals — word boundaries `\b...\b`, character classes
+// `[- ]`, alternations `(ai|ml)` are all allowed. Take care when adding
+// literal strings that may contain regex metacharacters (`.`, `+`, `*`,
+// `(`, `)`, `[`, `]`, `?`).
 
-import type { Job } from "../normalize";
+import type { Clearance } from "../normalize";
 
 export interface FilterResult {
   accept: boolean;
   reason?: string;
 }
 
-// --- criteria (edit freely) -------------------------------------------------
+// Narrow subset of Job that shouldAccept actually reads. Both canonical Job
+// objects (from adapters) and JobRow objects (from D1 SELECT) satisfy this.
+export interface FilterInput {
+  title: string;
+  company: string;
+  location: string | null;
+  remote: boolean | 0 | 1 | null;
+  clearance: Clearance;
+  description_text: string | null;
+}
 
 // Title words that MUST appear (case-insensitive, word-boundaried).
 // At least one must match. Leave empty to skip the include check.
@@ -127,7 +142,7 @@ const COMPANY_EXCLUDE_SET = new Set(
   COMPANY_EXCLUDE.map((c) => c.toLowerCase().trim()),
 );
 
-export function shouldAccept(job: Job): FilterResult {
+export function shouldAccept(job: FilterInput): FilterResult {
   const titleLower = job.title.toLowerCase();
   const companyLower = job.company.toLowerCase().trim();
 
@@ -146,15 +161,14 @@ export function shouldAccept(job: Job): FilterResult {
     return { accept: false, reason: `clearance:${job.clearance}` };
   }
 
-  // Location: accept if remote OR location matches include list OR no include list defined.
   if (LOCATION_INCLUDE_RE) {
+    const isRemote = job.remote === true || job.remote === 1;
     const locMatch = job.location ? LOCATION_INCLUDE_RE.test(job.location) : false;
-    if (!job.remote && !locMatch) {
+    if (!isRemote && !locMatch) {
       return { accept: false, reason: "location_not_include" };
     }
   }
 
-  // Experience check: parse max X+ years from description, reject if > threshold.
   if (Number.isFinite(MAX_REQUIRED_YEARS) && job.description_text) {
     let maxYears = 0;
     for (const m of job.description_text.matchAll(YEARS_RE)) {

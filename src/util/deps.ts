@@ -1,5 +1,3 @@
-import type { Clock } from "./now";
-
 // Dependencies injected into every adapter. Keeps adapters pure and trivially
 // testable — tests pass a fetch stub that returns fixture JSON for the exact URL.
 
@@ -11,7 +9,6 @@ export interface Logger {
 
 export interface Deps {
   fetch: FetchFn;
-  clock: Clock;
   logger: Logger;
 }
 

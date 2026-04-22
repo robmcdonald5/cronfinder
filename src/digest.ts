@@ -5,45 +5,22 @@
 // D1 keeps every job — edit filters.ts and re-trigger the slow cron to
 // re-filter without refetching.
 
-import type { Job } from "./normalize";
-import type { Clearance, EmploymentType } from "./normalize";
 import { shouldAccept } from "./config/filters";
+import type { Clearance } from "./normalize";
 
 interface JobRow {
   source: string;
   company: string;
   title: string;
   location: string | null;
-  remote: number | null;
-  clearance: string | null;
+  remote: 0 | 1 | null;
+  clearance: Clearance;
   salary_min: number | null;
   salary_max: number | null;
   salary_currency: string | null;
   apply_url: string;
   first_seen_at: string;
-  employment_type: string | null;
   description_text: string | null;
-}
-
-function rowToJob(row: JobRow): Job {
-  return {
-    source: row.source,
-    external_id: "",
-    company: row.company,
-    title: row.title,
-    location: row.location,
-    remote: row.remote === null ? null : row.remote === 1,
-    employment_type: (row.employment_type ?? null) as EmploymentType,
-    department: null,
-    description_html: null,
-    description_text: row.description_text,
-    salary_min: row.salary_min,
-    salary_max: row.salary_max,
-    salary_currency: row.salary_currency,
-    clearance: (row.clearance ?? null) as Clearance,
-    apply_url: row.apply_url,
-    posted_at: null,
-  };
 }
 
 interface Digest {
@@ -68,7 +45,7 @@ export async function buildDigest(
     .prepare(
       `SELECT source, company, title, location, remote, clearance,
               salary_min, salary_max, salary_currency, apply_url, first_seen_at,
-              employment_type, description_text
+              description_text
          FROM jobs
         WHERE first_seen_at >= ? AND first_seen_at < ?
         ORDER BY source, company, title`,
@@ -77,7 +54,7 @@ export async function buildDigest(
     .all<JobRow>();
 
   const totalBeforeFilter = results.length;
-  const accepted = results.filter((row) => shouldAccept(rowToJob(row)).accept);
+  const accepted = results.filter((row) => shouldAccept(row).accept);
 
   const date = windowEndIso.slice(0, 10);
   const body = renderMarkdown(accepted, windowStartIso, windowEndIso, totalBeforeFilter);
@@ -117,8 +94,6 @@ export async function storeDigest(
     )
     .run();
 }
-
-// ---------- Markdown rendering ----------
 
 type Category =
   | "Defense / Government Contractors"
@@ -173,7 +148,6 @@ export function renderMarkdown(
     return lines.join("\n") + "\n";
   }
 
-  // Bucket by category -> company -> rows.
   const byCategory = new Map<Category, Map<string, JobRow[]>>();
   for (const row of rows) {
     const cat = categoryOf(row.source);
@@ -212,7 +186,7 @@ function renderJobLine(j: JobRow): string {
   const bits: string[] = [];
   if (j.location) bits.push(escapeMd(j.location));
   if (j.remote === 1) bits.push("remote");
-  if (j.salary_min || j.salary_max) bits.push(formatSalary(j));
+  if (j.salary_min != null || j.salary_max != null) bits.push(formatSalary(j));
   if (j.clearance) bits.push(j.clearance);
   const tail = bits.length > 0 ? ` — ${bits.join(" · ")}` : "";
   return `${title}${tail}`;
@@ -222,9 +196,11 @@ function formatSalary(j: JobRow): string {
   const cur = j.salary_currency ?? "USD";
   const fmt = (n: number) =>
     n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
-  if (j.salary_min && j.salary_max) return `${fmt(j.salary_min)}–${fmt(j.salary_max)} ${cur}`;
-  if (j.salary_min) return `from ${fmt(j.salary_min)} ${cur}`;
-  if (j.salary_max) return `up to ${fmt(j.salary_max)} ${cur}`;
+  if (j.salary_min != null && j.salary_max != null) {
+    return `${fmt(j.salary_min)}–${fmt(j.salary_max)} ${cur}`;
+  }
+  if (j.salary_min != null) return `from ${fmt(j.salary_min)} ${cur}`;
+  if (j.salary_max != null) return `up to ${fmt(j.salary_max)} ${cur}`;
   return "";
 }
 
