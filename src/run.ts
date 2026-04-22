@@ -19,6 +19,8 @@ import { fetchAshby } from "./adapters/ashby";
 import { fetchUsaJobs } from "./adapters/usajobs";
 import { fetchWorkday } from "./adapters/workday";
 import { fetchEightfold } from "./adapters/eightfold";
+import { fetchHimalayas } from "./adapters/himalayas";
+import { fetchHn } from "./adapters/hn";
 import { buildDigest, storeDigest } from "./digest";
 
 interface TaskSpec {
@@ -125,6 +127,16 @@ function buildFastTasks(env: Env): TaskSpec[] {
       factory: (deps) => fetchUsaJobs({ apiKey, userAgent }, deps),
     });
   }
+
+  tasks.push({
+    source: "himalayas",
+    factory: (deps) => fetchHimalayas({}, deps),
+  });
+
+  tasks.push({
+    source: "hn",
+    factory: (deps) => fetchHn({}, deps),
+  });
 
   return tasks;
 }

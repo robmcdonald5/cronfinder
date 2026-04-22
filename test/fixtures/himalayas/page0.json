@@ -1,0 +1,39 @@
+{
+  "totalCount": 2,
+  "offset": 0,
+  "limit": 2,
+  "updatedAt": 1776800000,
+  "jobs": [
+    {
+      "title": "Senior Platform Engineer",
+      "excerpt": "Build platform infra.",
+      "companyName": "Acme Remote",
+      "companySlug": "acme-remote",
+      "employmentType": "Full Time",
+      "minSalary": 150000,
+      "maxSalary": 200000,
+      "seniority": ["Senior"],
+      "currency": "USD",
+      "locationRestrictions": ["Worldwide"],
+      "description": "<p>Build platform infra.</p><ul><li>5+ years</li></ul>",
+      "pubDate": 1776700000,
+      "expiryDate": 1781985904,
+      "applicationLink": "https://himalayas.app/companies/acme-remote/jobs/platform",
+      "guid": "https://himalayas.app/companies/acme-remote/jobs/platform"
+    },
+    {
+      "title": "DevOps Intern",
+      "excerpt": "Intern role.",
+      "companyName": "Example Co",
+      "employmentType": "Internship",
+      "minSalary": null,
+      "maxSalary": null,
+      "currency": null,
+      "locationRestrictions": ["US", "Canada"],
+      "description": null,
+      "pubDate": 1776720000,
+      "applicationLink": "https://himalayas.app/companies/example-co/jobs/intern",
+      "guid": "https://himalayas.app/companies/example-co/jobs/intern"
+    }
+  ]
+}
