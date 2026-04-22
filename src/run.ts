@@ -19,6 +19,7 @@ import { fetchAshby } from "./adapters/ashby";
 import { fetchUsaJobs } from "./adapters/usajobs";
 import { fetchWorkday } from "./adapters/workday";
 import { fetchEightfold } from "./adapters/eightfold";
+import { buildDigest, storeDigest } from "./digest";
 
 interface TaskSpec {
   source: string;                         // e.g. "greenhouse:stripe"
@@ -218,6 +219,24 @@ export async function runSlow(
   }
 
   await env.CACHE.put("last_run:slow", scheduledAt);
+
+  // Build + persist the daily digest. Errors here shouldn't hide the cron
+  // summary, so isolate them.
+  try {
+    const digest = await buildDigest(env.DB, scheduledAt);
+    await storeDigest(env.DB, digest, scheduledAt);
+    logger.log({
+      t: "digest_stored",
+      date: digest.date,
+      jobs_count: digest.jobsCount,
+      body_bytes: digest.body.length,
+    });
+  } catch (err) {
+    logger.log({
+      t: "digest_error",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   logger.log({
     t: "cron_done",

@@ -13,3 +13,6 @@ worker-configuration.d.ts
 # copy wrangler.example.jsonc -> wrangler.jsonc and fill in their own IDs.
 wrangler.jsonc
 
+# Pulled daily digests (npm run pull-digests).
+digests/
+

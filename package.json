@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "types": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply cronfinder --local",
-    "db:migrate:remote": "wrangler d1 migrations apply cronfinder --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply cronfinder --remote",
+    "pull-digests": "node scripts/pull-digests.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.14.9",
