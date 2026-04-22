@@ -6,6 +6,7 @@ Scheduled Cloudflare Worker that pulls job postings from public APIs into D1 (SQ
 
 - `PROJECT.md` — product spec of record (scope, goals, sources, phasing). Do not re-litigate decisions already made there.
 - `SOURCES.md` — living inventory of every API, infra service, secret, and tool this project uses, with current status. **When you add a new data source, Cloudflare binding, npm dependency, or secret — or when an existing source changes status (starts working, starts failing, endpoint moves) — update `SOURCES.md` in the same commit.**
+- `WRANGLER.md` — quick-reference for wrangler CLI commands (dev, deploy, D1, KV, secrets, logs) plus cronfinder-specific diagnostic SQL queries.
 - `.claude/plans/review-c-users-mcdon-repos-cronfinder-pr-resilient-otter.md` (in user's `~/.claude/plans/`) — approved implementation plan.
 
 ## Public-repo posture
