@@ -205,13 +205,19 @@ export function shouldAccept(job: FilterInput): FilterResult {
     }
   }
 
-  if (job.description_text && LOCAL_ONLY_RE.test(job.description_text)) {
+  // Cap description-text scans — Greenhouse `?content=true` descriptions can
+  // be 100 KB–1 MB each, and these regexes run once per candidate row. The
+  // signals we're looking for (locals-only, X+ years) consistently appear in
+  // the first few paragraphs, so scanning the whole JD is pure waste.
+  const descHead = job.description_text ? job.description_text.slice(0, 8000) : null;
+
+  if (descHead && LOCAL_ONLY_RE.test(descHead)) {
     return { accept: false, reason: "local_only" };
   }
 
-  if (Number.isFinite(MAX_REQUIRED_YEARS) && job.description_text) {
+  if (Number.isFinite(MAX_REQUIRED_YEARS) && descHead) {
     let maxYears = 0;
-    for (const m of job.description_text.matchAll(YEARS_RE)) {
+    for (const m of descHead.matchAll(YEARS_RE)) {
       const n = parseInt(m[1]!, 10);
       if (n > maxYears && n <= 20) maxYears = n;
     }

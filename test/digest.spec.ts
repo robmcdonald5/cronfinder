@@ -83,13 +83,10 @@ describe("digest renderMarkdown", () => {
   });
 
   it("shows dedup summary in the header when duplicates collapsed", () => {
-    const md = renderMarkdown(
-      SAMPLE,
-      "2026-04-20T23:07:00Z",
-      "2026-04-21T23:07:00Z",
-      /* totalBeforeFilter */ 10,
-      /* duplicatesCollapsed */ 2,
-    );
+    const md = renderMarkdown(SAMPLE, "2026-04-20T23:07:00Z", "2026-04-21T23:07:00Z", {
+      totalBeforeFilter: 10,
+      duplicatesCollapsed: 2,
+    });
     expect(md).toContain("3 unique out of 10 new, 2 cross-source duplicates collapsed");
   });
 });

@@ -1,20 +1,24 @@
-// Cross-source dedup hash builder. Emitted when the same role appears on
-// multiple ATSes (same normalized company/title/location) so a future
-// join table can fold them into one canonical job. Not wired into the
-// upsert path today — db.ts dedups on (source, external_id) only.
+// Canonical dedup grouping key. Two callers:
+//   - digest.ts collapses cross-source duplicates at render time.
+//   - dedupHash() below returns a sha256 of the same key — kept for a
+//     future cross-source upsert path that persists into a join table.
 
 import type { Job } from "./normalize";
 import { sha256Hex } from "./util/hash";
 import { normalizeCompany, normalizeLocation, normalizeTitle } from "./normalize";
 
-export function dedupHashInput(job: Job): string {
+export function dedupKey(
+  company: string,
+  title: string,
+  location: string | null,
+): string {
   return [
-    normalizeCompany(job.company),
-    normalizeTitle(job.title),
-    normalizeLocation(job.location),
+    normalizeCompany(company),
+    normalizeTitle(title),
+    normalizeLocation(location),
   ].join("|");
 }
 
 export function dedupHash(job: Job): Promise<string> {
-  return sha256Hex(dedupHashInput(job));
+  return sha256Hex(dedupKey(job.company, job.title, job.location));
 }
