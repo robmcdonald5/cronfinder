@@ -22,8 +22,8 @@ Inventory of every external API, infrastructure service, and build dependency cr
 | Service | Purpose | Binding / Name | Notes |
 |---|---|---|---|
 | **Workers** | Runtime for the two cron handlers. | — | `workers_dev: false`, `preview_urls: false`. Only the scheduled handler is exported today (no public HTTP surface). |
-| **D1** | SQLite at the edge. Holds `jobs`, `dedup_keys`, `run_log`, `raw_responses`, `digests` tables. | `env.DB` → database `cronfinder` | Real id lives only in the gitignored `wrangler.jsonc`; template is in `wrangler.example.jsonc`. |
-| **KV** | Cross-invocation cache (ATS tokens, last-run timestamps). | `env.CACHE` | Same gitignored-id pattern. |
+| **D1** | SQLite at the edge. Holds `jobs`, `dedup_keys`, `run_log`, `raw_responses`, `digests` tables. | `env.DB` → database `cronfinder` | `database_id` is tracked in `wrangler.jsonc`; it's a resource identifier, not a credential. |
+| **KV** | Cross-invocation cache (ATS tokens, last-run timestamps). | `env.CACHE` | Same as D1 — `id` tracked in `wrangler.jsonc`. |
 | **Cron Triggers** | Scheduler. | Fast `17 */4 * * *` + Slow `23 7 * * *` (UTC) | Offsets from the top of the hour to avoid CF load spikes. |
 | **Workers Logs** | Per-request + `console.log` retention for debugging. | Enabled via `[observability] enabled = true` | 7 days on Paid plan. Structured JSON log lines (`{t: "adapter_run", ...}`) are dashboard-searchable. |
 

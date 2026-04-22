@@ -8,11 +8,6 @@ worker-configuration.d.ts
 .vscode/
 .idea/
 
-# Public-repo posture: wrangler.jsonc contains the real D1/KV resource IDs.
-# These IDs aren't auth credentials, but we don't publish them. Contributors
-# copy wrangler.example.jsonc -> wrangler.jsonc and fill in their own IDs.
-wrangler.jsonc
-
 # Pulled daily digests (npm run pull-digests).
 digests/
 

@@ -10,9 +10,9 @@ Scheduled Cloudflare Worker that pulls job postings from public APIs into D1 (SQ
 
 ## Public-repo posture
 
-This repository is public. The canonical `wrangler.jsonc` is **gitignored** because it carries the real D1 `database_id` and KV `id`. Those aren't credentials (attackers can't use them without your CF API token), but we don't publish them. The tracked template is `wrangler.example.jsonc`; contributors `cp wrangler.example.jsonc wrangler.jsonc` and fill in their own IDs.
+This repository is public. `wrangler.jsonc` is tracked directly with its real D1 `database_id` and KV `id` — those are resource identifiers, not credentials. Cloudflare's own example repos follow the same convention. Real secrets (USAJobs key, any future tokens) live on Cloudflare infra via `wrangler secret put` and never hit the tree.
 
-For CI deploy, the workflow substitutes the two IDs from GitHub Actions secrets into a generated `wrangler.jsonc` before calling `wrangler deploy`. GitHub secrets expected: `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `D1_DATABASE_ID`, `KV_NAMESPACE_ID`. Wired up in Phase 1+/2.
+Deploys run via Cloudflare's built-in GitHub integration: a push to `main` triggers `npx wrangler deploy` inside CF Workers Builds. There is no `.github/workflows/` directory.
 
 ## Commands
 

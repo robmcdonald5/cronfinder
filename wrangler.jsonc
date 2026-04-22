@@ -22,14 +22,14 @@
 		{
 			"binding": "DB",
 			"database_name": "cronfinder",
-			"database_id": "REPLACE_ME_AFTER_WRANGLER_D1_CREATE",
+			"database_id": "15929799-e126-4711-8cef-9c44d877ced8",
 			"migrations_dir": "migrations"
 		}
 	],
 	"kv_namespaces": [
 		{
 			"binding": "CACHE",
-			"id": "REPLACE_ME_AFTER_WRANGLER_KV_CREATE"
+			"id": "19c28da7d82648da90969e69705f9570"
 		}
 	]
 	// Secrets (set via `wrangler secret put <NAME>`):

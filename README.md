@@ -4,19 +4,13 @@ Scheduled Cloudflare Worker that pulls job postings from curated public APIs eve
 
 - **Product spec:** [`PROJECT.md`](./PROJECT.md)
 - **Engineering conventions:** [`CLAUDE.md`](./CLAUDE.md)
+- **Sources, infra, secrets, deps:** [`SOURCES.md`](./SOURCES.md)
 
-## Quick start (fresh clone)
+## Quick start
 
 ```bash
 npm install
-
-# Copy the wrangler config template and authenticate.
-cp wrangler.example.jsonc wrangler.jsonc
 npx wrangler login
-
-# Create your own D1 + KV — paste the returned IDs into wrangler.jsonc.
-npx wrangler d1 create cronfinder
-npx wrangler kv namespace create CACHE
 
 # Set secrets (interactive prompt for each).
 npx wrangler secret put USAJOBS_API_KEY          # from https://developer.usajobs.gov/
@@ -31,7 +25,7 @@ npm run types
 npm run dev
 ```
 
-Then trigger a scheduled run locally:
+Trigger a scheduled run against the local dev server:
 
 ```bash
 curl "http://localhost:8787/__scheduled?cron=17+*/4+*+*+*"   # fast cron
@@ -44,11 +38,11 @@ Deploy:
 npm run deploy
 ```
 
-## Why `wrangler.jsonc` is gitignored
+## `wrangler.jsonc`
 
-The repo-tracked file is `wrangler.example.jsonc` with placeholder D1/KV IDs. The real `wrangler.jsonc` (with your actual resource IDs) is gitignored so the public tree never exposes which specific D1 database or KV namespace this project uses. See `CLAUDE.md` for the rationale and the GitHub Actions substitution pattern used when we wire up CI deploy.
+The D1 `database_id` and KV `id` in `wrangler.jsonc` are resource identifiers, not credentials — they bind the Worker to specific Cloudflare resources but can't be used without the account's API token. They live directly in the tracked config; if you fork this repo you'll want to replace them with your own `wrangler d1 create` / `wrangler kv namespace create` output.
 
-## Where the secrets live
+## Secrets
 
 - Production secrets (USAJobs key, etc.) live on Cloudflare's infrastructure — set once via `wrangler secret put`, never in git, never in any local file.
 - For `wrangler dev`, copy `.dev.vars.example` → `.dev.vars` (gitignored) and fill in.
