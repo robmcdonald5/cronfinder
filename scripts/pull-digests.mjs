@@ -1,57 +1,57 @@
 #!/usr/bin/env node
-// Pull daily digests from remote D1 into ./digests/ (gitignored).
-// Usage: npm run pull-digests [-- --force]
+// Pull daily digests from D1 into ./digests/ (gitignored).
+// Usage:
+//   npm run pull-digests                # remote, missing only
+//   npm run pull-digests -- --force     # remote, overwrite local
+//   npm run pull-digests -- --local     # local D1 (dev smoke test)
 //
-//   (no flag): fetch only digest ids that aren't already present locally.
-//   --force:   overwrite local files.
+// wrangler's --json output with --remote can be preceded by progress lines
+// (e.g. "├ Checking if file needs uploading"), so we extract the JSON array
+// from the captured stdout by scanning from the last ']' backward to its
+// matching '['.
 
-import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { execSync } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const DIGESTS_DIR = "./digests";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 const SCOPE_FLAG = process.argv.includes("--local") ? "--local" : "--remote";
 
-// Passes SQL via a temp file (--file) instead of --command to avoid
-// shell-quoting pain on Windows vs. *nix when using `shell: true`.
-function runWranglerJson(sql) {
-  const dir = mkdtempSync(join(tmpdir(), "cronfinder-"));
-  const file = join(dir, "query.sql");
-  writeFileSync(file, sql, "utf-8");
-  try {
-    const out = execFileSync(
-      "npx",
-      [
-        "wrangler",
-        "d1",
-        "execute",
-        "cronfinder",
-        SCOPE_FLAG,
-        "--json",
-        "--file",
-        file,
-      ],
-      {
-        encoding: "utf-8",
-        stdio: ["ignore", "pipe", "inherit"],
-        shell: true,
-      },
-    );
-    const parsed = JSON.parse(out);
-    return parsed[0]?.results ?? [];
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+function extractJsonArray(out) {
+  const close = out.lastIndexOf("]");
+  if (close === -1) {
+    throw new Error(`no JSON array in wrangler output:\n${out.slice(0, 500)}`);
   }
+  let depth = 0;
+  for (let i = close; i >= 0; i--) {
+    const ch = out[i];
+    if (ch === "]") depth++;
+    else if (ch === "[") {
+      depth--;
+      if (depth === 0) {
+        return JSON.parse(out.slice(i, close + 1));
+      }
+    }
+  }
+  throw new Error(`unbalanced brackets in wrangler output:\n${out.slice(0, 500)}`);
+}
+
+function runWranglerJson(sql) {
+  // Pass the whole invocation as one string so the shell treats the SQL as a
+  // single argument. All SQL is constructed in this file from validated date
+  // ids (DATE_RE), so there are no double quotes or shell metachars to worry
+  // about; the embedded `"${sql}"` stays intact.
+  if (sql.includes('"')) {
+    throw new Error(`refusing to pass SQL containing double quotes: ${sql}`);
+  }
+  const cmd = `npx wrangler d1 execute cronfinder ${SCOPE_FLAG} --json --command "${sql}"`;
+  const out = execSync(cmd, {
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  const parsed = extractJsonArray(out);
+  return parsed[0]?.results ?? [];
 }
 
 function main() {
