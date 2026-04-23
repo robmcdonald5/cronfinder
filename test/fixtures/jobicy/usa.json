@@ -1,0 +1,46 @@
+{
+  "apiVersion": "2",
+  "jobCount": 3,
+  "jobs": [
+    {
+      "id": 142415,
+      "url": "https://jobicy.com/jobs/142415-senior-software-engineer-acme",
+      "jobSlug": "142415-senior-software-engineer-acme",
+      "jobTitle": "Senior Software Engineer",
+      "companyName": "Acme",
+      "jobIndustry": ["Engineering"],
+      "jobType": ["Full-Time"],
+      "jobGeo": "USA",
+      "jobLevel": "Senior",
+      "jobExcerpt": "Build distributed APIs",
+      "jobDescription": "<p>We need a strong Python dev.</p>",
+      "pubDate": "2026-04-22T12:00:00+00:00",
+      "salaryMin": 140000,
+      "salaryMax": 200000,
+      "salaryCurrency": "USD"
+    },
+    {
+      "id": 142416,
+      "url": "https://jobicy.com/jobs/142416-data-engineer-beta",
+      "jobTitle": "Data Engineer",
+      "companyName": "Beta",
+      "jobIndustry": ["Data"],
+      "jobType": ["Contract"],
+      "jobGeo": "USA",
+      "jobExcerpt": "dbt + Snowflake",
+      "jobDescription": "<p>Pipelines.</p>",
+      "pubDate": "2026-04-23T08:15:00+00:00",
+      "salaryMin": null,
+      "salaryMax": null
+    },
+    {
+      "id": 142417,
+      "url": "https://jobicy.com/jobs/142417-product-designer-gamma",
+      "jobTitle": "Product Designer",
+      "companyName": "Gamma Co",
+      "jobType": ["Part-Time"],
+      "jobGeo": "USA",
+      "pubDate": "2026-04-21T18:00:00+00:00"
+    }
+  ]
+}

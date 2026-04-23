@@ -21,6 +21,7 @@ import { fetchHn } from "./adapters/hn";
 import { fetchAdzuna } from "./adapters/adzuna";
 import { fetchRemoteOk } from "./adapters/remoteok";
 import { fetchMuse } from "./adapters/themuse";
+import { fetchJobicy } from "./adapters/jobicy";
 import { buildDigest, storeDigest } from "./digest";
 
 // Flush upserts this often so the peak in-memory Job buffer stays bounded
@@ -157,6 +158,7 @@ function buildFastTasks(env: Env): TaskSpec[] {
   tasks.push({ source: "hn", factory: (d) => fetchHn({}, d) });
   tasks.push({ source: "remoteok", factory: (d) => fetchRemoteOk({}, d) });
   tasks.push({ source: "themuse", factory: (d) => fetchMuse({}, d) });
+  tasks.push({ source: "jobicy", factory: (d) => fetchJobicy({}, d) });
 
   return tasks;
 }
