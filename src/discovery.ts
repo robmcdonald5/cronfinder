@@ -6,8 +6,10 @@
 
 import type { Deps } from "./util/deps";
 import { UA_GENERIC } from "./util/ua";
+import { normalizeCompany } from "./normalize";
+import type { AtsKind } from "./ats-registry";
 
-type ProbeAts = "greenhouse" | "lever" | "ashby";
+type ProbeAts = Extract<AtsKind, "greenhouse" | "lever" | "ashby">;
 const PROBE_ORDER: readonly ProbeAts[] = ["greenhouse", "lever", "ashby"] as const;
 
 // Aggregator source tags whose company names we want to probe. Excludes the
@@ -29,23 +31,21 @@ export interface DiscoverySummary {
 
 // Derive plausible slug candidates from a company name. Kept small — each
 // extra candidate costs a probe subrequest, and hit rates fall off fast past
-// the first 2–3 forms.
+// the first 2–3 forms. Reuses normalizeCompany so suffix stripping stays
+// consistent with the dedup pipeline (Lever "Acme S.A." would otherwise
+// slug differently than it dedups).
 export function slugCandidates(company: string): string[] {
-  const clean = company
-    .toLowerCase()
-    // Drop apostrophes without inserting whitespace so "O'Reilly" → "oreilly".
-    .replace(/['‘’]/g, "")
-    .replace(/\b(inc|incorporated|llc|ltd|limited|corp|corporation|co|plc|gmbh|ag)\b\.?/g, " ")
-    .replace(/[^a-z0-9 ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!clean) return [];
-  const tokens = clean.split(" ").filter(Boolean);
+  // Drop apostrophes before normalizeCompany so "O'Reilly" collapses to
+  // "oreilly" rather than "o reilly" (normalizeCompany inserts whitespace
+  // for non-alphanumerics).
+  const normalized = normalizeCompany(company.replace(/['‘’]/g, ""));
+  if (!normalized) return [];
+  const tokens = normalized.split(" ").filter(Boolean);
+  if (tokens.length === 0) return [];
   const compact = tokens.join("");
   const hyphenated = tokens.join("-");
   const first = tokens[0]!;
   const candidates = new Set<string>();
-  // Limit length — real ATS slugs rarely exceed 40 chars.
   for (const c of [first, compact, hyphenated]) {
     if (c && c.length <= 40 && c.length >= 2) candidates.add(c);
   }

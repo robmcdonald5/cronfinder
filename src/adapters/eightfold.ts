@@ -7,13 +7,16 @@ import { retry } from "../util/retry";
 import { stripHtml } from "../util/html";
 
 // Eightfold tenants live in src/seeds/eightfold-tenants.json and in the
-// `meta` column of ats_tenants.
-export interface EightfoldTarget {
-  company: string;
-  slug: string;
-  host: string;    // careers-site host, e.g. "explore.jobs.netflix.net"
-  domain: string;  // `domain=` query param, e.g. "netflix.com"
-}
+// `meta` column of ats_tenants. run.ts parses `meta` through this schema
+// before dispatching so a malformed row skips cleanly instead of producing
+// garbage URLs.
+export const EightfoldTargetSchema = z.object({
+  company: z.string().min(1),
+  slug: z.string().min(1),
+  host: z.string().min(1),
+  domain: z.string().min(1),
+});
+export type EightfoldTarget = z.infer<typeof EightfoldTargetSchema>;
 
 const Position = z.object({
   id: z.union([z.number(), z.string()]),

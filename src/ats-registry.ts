@@ -70,7 +70,7 @@ export async function selectTenantsToFetch(
               consecutive_failures, jobs_last_seen
        FROM ats_tenants
        WHERE ats = ? AND status = 'active'
-       ORDER BY (last_fetched_at IS NULL) DESC, last_fetched_at ASC
+       ORDER BY last_fetched_at ASC NULLS FIRST
        LIMIT ?`,
     )
     .bind(ats, limit)
@@ -94,51 +94,56 @@ export async function selectTenantsToFetch(
   }));
 }
 
-// Update health after a run. Separated from selectTenantsToFetch so tests can
-// exercise the transition logic without SQL — see computeHealthUpdate below.
-export async function updateTenantHealth(
-  db: D1Database,
-  ats: AtsKind,
-  slug: string,
-  outcome: RunOutcome,
-  nowIso: string,
-): Promise<void> {
-  const row = await db
-    .prepare(`SELECT consecutive_failures FROM ats_tenants WHERE ats = ? AND slug = ?`)
-    .bind(ats, slug)
-    .first<{ consecutive_failures: number }>();
-  if (!row) return;
-
-  const next = computeHealthUpdate(
-    { consecutive_failures: row.consecutive_failures },
-    outcome,
-  );
-
-  await db
-    .prepare(
-      `UPDATE ats_tenants
-       SET last_fetched_at = ?,
-           last_ok_at = CASE WHEN ? = 0 THEN ? ELSE last_ok_at END,
-           consecutive_failures = ?,
-           jobs_last_seen = ?,
-           status = ?
-       WHERE ats = ? AND slug = ?`,
-    )
-    .bind(
-      nowIso,
-      outcome.errored ? 1 : 0,
-      nowIso,
-      next.consecutive_failures,
-      outcome.jobsFetched,
-      next.status,
-      ats,
-      slug,
-    )
-    .run();
+export interface HealthUpdate {
+  ats: AtsKind;
+  slug: string;
+  outcome: RunOutcome;
 }
 
-// Pure function — used directly from updateTenantHealth and exercised by
-// unit tests so we don't need a real D1 to verify transition rules.
+// Batched UPDATEs — the whole array counts as ONE D1 subrequest regardless
+// of statement count. At ~375 ATS tenants per fast cron, this replaces
+// 375 individual subrequests with one. Each statement computes next
+// consecutive_failures and status inline via SQLite CASE so we never pay
+// a SELECT subrequest first. The CASE arms mirror computeHealthUpdate
+// below, which is the canonical spec and what tests exercise.
+export async function updateTenantHealthBatch(
+  db: D1Database,
+  updates: readonly HealthUpdate[],
+  nowIso: string,
+): Promise<void> {
+  if (updates.length === 0) return;
+  const stmts = updates.map((u) => {
+    const erroredFlag = u.outcome.errored ? 1 : 0;
+    return db
+      .prepare(
+        `UPDATE ats_tenants
+         SET last_fetched_at = ?,
+             last_ok_at = CASE WHEN ? = 0 THEN ? ELSE last_ok_at END,
+             consecutive_failures = CASE WHEN ? = 0 THEN 0
+                                         ELSE consecutive_failures + 1 END,
+             jobs_last_seen = ?,
+             status = CASE
+               WHEN ? = 0 THEN 'active'
+               WHEN consecutive_failures + 1 >= ? THEN 'dead'
+               ELSE 'active'
+             END
+         WHERE ats = ? AND slug = ?`,
+      )
+      .bind(
+        nowIso,
+        erroredFlag, nowIso,
+        erroredFlag,
+        u.outcome.jobsFetched,
+        erroredFlag, DEAD_THRESHOLD,
+        u.ats, u.slug,
+      );
+  });
+  await db.batch(stmts);
+}
+
+// Pure function — canonical spec of the transition rules, mirrored by the
+// CASE expressions in updateTenantHealth's SQL above. Kept as the test
+// target so we don't need a real D1 to verify the transitions.
 export function computeHealthUpdate(
   prev: { consecutive_failures: number },
   outcome: RunOutcome,

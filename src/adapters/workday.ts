@@ -8,15 +8,17 @@ import { PerKeyThrottle } from "../util/rate-limit";
 import { stripHtml } from "../util/html";
 
 // Workday tuples live in src/seeds/workday-tenants.json and in the
-// `meta` column of ats_tenants. Co-locating the type with the adapter
-// that consumes it keeps the seed→adapter contract in one place.
-export interface WorkdayTarget {
-  company: string;   // display name ("RTX", "Leidos")
-  slug: string;      // source tag after `workday:`
-  tenant: string;    // URL subdomain
-  wdN: number;       // shard number in `wd{N}`
-  site: string;      // site path segment
-}
+// `meta` column of ats_tenants. Co-locating the type + runtime schema
+// with the adapter keeps the seed→adapter contract in one place; run.ts
+// parses the `meta` blob through this schema before dispatching.
+export const WorkdayTargetSchema = z.object({
+  company: z.string().min(1),
+  slug: z.string().min(1),
+  tenant: z.string().min(1),
+  wdN: z.number().int().positive(),
+  site: z.string().min(1),
+});
+export type WorkdayTarget = z.infer<typeof WorkdayTargetSchema>;
 
 const ListPosting = z.object({
   title: z.string().min(1),

@@ -3,6 +3,7 @@ import type { Job } from "../normalize";
 import type { Deps } from "../util/deps";
 import { UA_GENERIC } from "../util/ua";
 import { retry } from "../util/retry";
+import { stripHtml } from "../util/html";
 
 // RemoteOK returns a JSON array where index 0 is a metadata/legal wrapper and
 // the remaining entries are postings. Per their ToS, attribution is required —
@@ -61,8 +62,8 @@ export async function* fetchRemoteOk(
       remote: true,
       employment_type: null,
       department: null,
-      description_html: null,
-      description_text: j.description ?? null,
+      description_html: j.description ?? null,
+      description_text: j.description ? stripHtml(j.description) : null,
       salary_min: sMin,
       salary_max: sMax,
       salary_currency: sMin != null || sMax != null ? "USD" : null,

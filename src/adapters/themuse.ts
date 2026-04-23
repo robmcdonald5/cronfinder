@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Job } from "../normalize";
+import { parseWorkplaceType } from "../normalize";
 import type { Deps } from "../util/deps";
 import { UA_GENERIC } from "../util/ua";
 import { retry } from "../util/retry";
@@ -101,7 +102,9 @@ export async function* fetchMuse(
 
         const locationNames = j.locations?.map((l) => l.name) ?? [];
         const locationStr = locationNames.length ? locationNames.join(" / ") : null;
-        const remote = locationNames.some((n) => /\bremote\b|\bflexible\b/i.test(n));
+        // "Flexible / Remote" is TheMuse's canonical remote label; parseWorkplaceType
+        // keys off "remote" substring and also handles plain "Remote" / "REMOTE".
+        const remote = locationNames.some((n) => parseWorkplaceType(n) === true);
 
         const contents = j.contents ?? null;
 

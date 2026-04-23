@@ -11,8 +11,8 @@ import { fetchGreenhouse } from "./adapters/greenhouse";
 import { fetchLever } from "./adapters/lever";
 import { fetchAshby } from "./adapters/ashby";
 import { fetchUsaJobs } from "./adapters/usajobs";
-import { fetchWorkday, type WorkdayTarget } from "./adapters/workday";
-import { fetchEightfold, type EightfoldTarget } from "./adapters/eightfold";
+import { fetchWorkday, WorkdayTargetSchema, type WorkdayTarget } from "./adapters/workday";
+import { fetchEightfold, EightfoldTargetSchema, type EightfoldTarget } from "./adapters/eightfold";
 import { fetchHimalayas } from "./adapters/himalayas";
 import { fetchHn } from "./adapters/hn";
 import { fetchAdzuna } from "./adapters/adzuna";
@@ -22,12 +22,14 @@ import { fetchJobicy } from "./adapters/jobicy";
 import { buildDigest, storeDigest } from "./digest";
 import { passesTitlePrefilter } from "./config/filters";
 import { runDiscovery } from "./discovery";
+import { sha256Hex } from "./util/hash";
 
 import {
   ensureSeeds,
   selectTenantsToFetch,
-  updateTenantHealth,
+  updateTenantHealthBatch,
   type AtsKind,
+  type HealthUpdate,
   type SeedEntry,
 } from "./ats-registry";
 
@@ -57,8 +59,6 @@ const SHARD_LIMITS = {
 interface TaskSpec {
   source: string;
   factory: (deps: Deps) => AsyncIterable<Job>;
-  // Called after the task completes — used to update ats_tenants health.
-  onComplete?: (outcome: TaskOutcome) => Promise<void>;
 }
 
 interface TaskOutcome {
@@ -119,19 +119,6 @@ async function runAdapterTask(
     ...(error !== undefined ? { error } : {}),
   };
   logger.log({ t: "adapter_run", ...outcome });
-
-  if (spec.onComplete) {
-    try {
-      await spec.onComplete(outcome);
-    } catch (cErr) {
-      logger.log({
-        t: "on_complete_error",
-        source: spec.source,
-        error: cErr instanceof Error ? cErr.message : String(cErr),
-      });
-    }
-  }
-
   return outcome;
 }
 
@@ -175,48 +162,77 @@ function fulfilledOutcomes(
   return results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
 }
 
-// Seed ats_tenants once per cron so freshly-added JSON entries are picked up
-// on the next run without a migration. Existing rows are untouched.
-async function seedAll(db: D1Database, nowIso: string): Promise<void> {
-  const workday: SeedEntry[] = (workdaySeed as readonly WorkdayTarget[]).map(
-    (t) => ({ slug: t.slug, meta: { ...t } }),
-  );
-  const eightfold: SeedEntry[] = (eightfoldSeed as readonly EightfoldTarget[]).map(
-    (t) => ({ slug: t.slug, meta: { ...t } }),
-  );
-  const gh: SeedEntry[] = (greenhouseSeed as readonly string[]).map((s) => ({ slug: s }));
-  const lv: SeedEntry[] = (leverSeed as readonly string[]).map((s) => ({ slug: s }));
-  const ab: SeedEntry[] = (ashbySeed as readonly string[]).map((s) => ({ slug: s }));
-
-  await Promise.all([
-    ensureSeeds(db, "greenhouse", gh, nowIso),
-    ensureSeeds(db, "lever", lv, nowIso),
-    ensureSeeds(db, "ashby", ab, nowIso),
-    ensureSeeds(db, "workday", workday, nowIso),
-    ensureSeeds(db, "eightfold", eightfold, nowIso),
-  ]);
+// Stable fingerprint of a seed list — order-independent, includes meta. We
+// gate the expensive ensureSeeds D1 writes behind a KV-cached hash so we
+// only re-insert when the bundled seed actually changed.
+async function seedFingerprint(entries: readonly SeedEntry[]): Promise<string> {
+  const lines = entries
+    .map((e) => (e.meta ? `${e.slug}|${JSON.stringify(e.meta)}` : e.slug))
+    .sort();
+  return sha256Hex(lines.join("\n"));
 }
 
-// Build a TaskSpec for a given tenant, wiring onComplete to update D1 health.
+// Seed ats_tenants only when the bundled seed list has actually changed
+// since the last cron. Hash lives in KV at `ats_seed_hash:<ats>`. The
+// previous implementation hit D1 with ~34 batches every cron regardless —
+// under the new bulk-seeded scale (~15k slugs) that was the single biggest
+// line item in the fast-cron subrequest budget.
+async function seedAll(env: Env, nowIso: string): Promise<void> {
+  const seeds: Array<{ ats: AtsKind; entries: SeedEntry[] }> = [
+    { ats: "greenhouse", entries: (greenhouseSeed as readonly string[]).map((s) => ({ slug: s })) },
+    { ats: "lever",      entries: (leverSeed as readonly string[]).map((s) => ({ slug: s })) },
+    { ats: "ashby",      entries: (ashbySeed as readonly string[]).map((s) => ({ slug: s })) },
+    { ats: "workday",    entries: (workdaySeed as readonly WorkdayTarget[]).map((t) => ({ slug: t.slug, meta: { ...t } })) },
+    { ats: "eightfold",  entries: (eightfoldSeed as readonly EightfoldTarget[]).map((t) => ({ slug: t.slug, meta: { ...t } })) },
+  ];
+
+  await Promise.all(
+    seeds.map(async ({ ats, entries }) => {
+      const fp = await seedFingerprint(entries);
+      const key = `ats_seed_hash:${ats}`;
+      const stored = await env.CACHE.get(key);
+      if (stored === fp) return;
+      await ensureSeeds(env.DB, ats, entries, nowIso);
+      await env.CACHE.put(key, fp);
+    }),
+  );
+}
+
 function atsTaskSpec(
-  env: Env,
   ats: AtsKind,
   slug: string,
   factory: (deps: Deps) => AsyncIterable<Job>,
-  nowIso: string,
 ): TaskSpec {
-  return {
-    source: `${ats}:${slug}`,
-    factory,
-    onComplete: (outcome) =>
-      updateTenantHealth(
-        env.DB,
-        ats,
-        slug,
-        { jobsFetched: outcome.jobsFetched, errored: outcome.error !== undefined },
-        nowIso,
-      ),
-  };
+  return { source: `${ats}:${slug}`, factory };
+}
+
+const ATS_PREFIXES: ReadonlyArray<readonly [string, AtsKind]> = [
+  ["greenhouse:", "greenhouse"],
+  ["lever:", "lever"],
+  ["ashby:", "ashby"],
+  ["workday:", "workday"],
+  ["eightfold:", "eightfold"],
+];
+
+function parseAtsSource(source: string): { ats: AtsKind; slug: string } | null {
+  for (const [prefix, ats] of ATS_PREFIXES) {
+    if (source.startsWith(prefix)) return { ats, slug: source.slice(prefix.length) };
+  }
+  return null;
+}
+
+function toHealthUpdates(outcomes: readonly TaskOutcome[]): HealthUpdate[] {
+  const out: HealthUpdate[] = [];
+  for (const o of outcomes) {
+    const parsed = parseAtsSource(o.source);
+    if (!parsed) continue;
+    out.push({
+      ats: parsed.ats,
+      slug: parsed.slug,
+      outcome: { jobsFetched: o.jobsFetched, errored: o.error !== undefined },
+    });
+  }
+  return out;
 }
 
 async function buildFastTasks(env: Env, nowIso: string): Promise<TaskSpec[]> {
@@ -229,13 +245,13 @@ async function buildFastTasks(env: Env, nowIso: string): Promise<TaskSpec[]> {
   ]);
 
   for (const t of ghShard) {
-    tasks.push(atsTaskSpec(env, "greenhouse", t.slug, (d) => fetchGreenhouse(t.slug, d), nowIso));
+    tasks.push(atsTaskSpec("greenhouse", t.slug, (d) => fetchGreenhouse(t.slug, d)));
   }
   for (const t of leverShard) {
-    tasks.push(atsTaskSpec(env, "lever", t.slug, (d) => fetchLever(t.slug, d), nowIso));
+    tasks.push(atsTaskSpec("lever", t.slug, (d) => fetchLever(t.slug, d)));
   }
   for (const t of ashbyShard) {
-    tasks.push(atsTaskSpec(env, "ashby", t.slug, (d) => fetchAshby(t.slug, d), nowIso));
+    tasks.push(atsTaskSpec("ashby", t.slug, (d) => fetchAshby(t.slug, d)));
   }
 
   if (env.USAJOBS_API_KEY && env.USAJOBS_USER_AGENT) {
@@ -269,29 +285,33 @@ async function buildSlowTasks(env: Env, nowIso: string): Promise<TaskSpec[]> {
   ]);
 
   for (const t of workdayShard) {
-    const target = t.meta as unknown as WorkdayTarget | null;
-    if (!target) continue;
+    const parsed = WorkdayTargetSchema.safeParse(t.meta);
+    if (!parsed.success) {
+      consoleLogger.log({ t: "bad_meta", ats: "workday", slug: t.slug, error: parsed.error.message });
+      continue;
+    }
+    const target = parsed.data;
     tasks.push(
       atsTaskSpec(
-        env,
         "workday",
         t.slug,
         (d) => fetchWorkday({ target, throttle: workdayThrottle }, d),
-        nowIso,
       ),
     );
   }
 
   for (const t of eightfoldShard) {
-    const target = t.meta as unknown as EightfoldTarget | null;
-    if (!target) continue;
+    const parsed = EightfoldTargetSchema.safeParse(t.meta);
+    if (!parsed.success) {
+      consoleLogger.log({ t: "bad_meta", ats: "eightfold", slug: t.slug, error: parsed.error.message });
+      continue;
+    }
+    const target = parsed.data;
     tasks.push(
       atsTaskSpec(
-        env,
         "eightfold",
         t.slug,
         (d) => fetchEightfold({ target }, d),
-        nowIso,
       ),
     );
   }
@@ -307,7 +327,7 @@ export async function runFast(
   const logger = consoleLogger;
   const started = Date.now();
 
-  await seedAll(env.DB, scheduledAt);
+  await seedAll(env, scheduledAt);
   const tasks = await buildFastTasks(env, scheduledAt);
 
   logger.log({ t: "cron_start", cron: "fast", scheduledAt, task_count: tasks.length });
@@ -316,15 +336,20 @@ export async function runFast(
     tasks.map((spec) => runAdapterTask(spec, env, logger, scheduledAt)),
   );
 
+  const fastOutcomes = fulfilledOutcomes(results);
+
   try {
-    await writeRunLogBatch(env.DB, toRunLogEntries(fulfilledOutcomes(results), "fast", scheduledAt));
+    await writeRunLogBatch(env.DB, toRunLogEntries(fastOutcomes, "fast", scheduledAt));
   } catch (err) {
     logger.log({ t: "run_log_error", error: err instanceof Error ? err.message : String(err) });
   }
 
-  // Auto-discovery: probe aggregator-surfaced company names against
-  // Greenhouse / Lever / Ashby to grow the ats_tenants registry without
-  // manual edits. Runs after ingestion so we have fresh company-name data.
+  try {
+    await updateTenantHealthBatch(env.DB, toHealthUpdates(fastOutcomes), scheduledAt);
+  } catch (err) {
+    logger.log({ t: "health_batch_error", error: err instanceof Error ? err.message : String(err) });
+  }
+
   try {
     const discoveryDeps: Deps = { fetch: globalThis.fetch.bind(globalThis), logger };
     const summary = await runDiscovery(env.DB, discoveryDeps, scheduledAt);
@@ -358,7 +383,7 @@ export async function runSlow(
   const logger = consoleLogger;
   const started = Date.now();
 
-  await seedAll(env.DB, scheduledAt);
+  await seedAll(env, scheduledAt);
   const tasks = await buildSlowTasks(env, scheduledAt);
 
   logger.log({ t: "cron_start", cron: "slow", scheduledAt, task_count: tasks.length });
@@ -367,10 +392,18 @@ export async function runSlow(
     tasks.map((spec) => runAdapterTask(spec, env, logger, scheduledAt)),
   );
 
+  const slowOutcomes = fulfilledOutcomes(results);
+
   try {
-    await writeRunLogBatch(env.DB, toRunLogEntries(fulfilledOutcomes(results), "slow", scheduledAt));
+    await writeRunLogBatch(env.DB, toRunLogEntries(slowOutcomes, "slow", scheduledAt));
   } catch (err) {
     logger.log({ t: "run_log_error", error: err instanceof Error ? err.message : String(err) });
+  }
+
+  try {
+    await updateTenantHealthBatch(env.DB, toHealthUpdates(slowOutcomes), scheduledAt);
+  } catch (err) {
+    logger.log({ t: "health_batch_error", error: err instanceof Error ? err.message : String(err) });
   }
 
   try {
