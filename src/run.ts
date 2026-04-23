@@ -19,6 +19,7 @@ import { fetchWorkday } from "./adapters/workday";
 import { fetchHimalayas } from "./adapters/himalayas";
 import { fetchHn } from "./adapters/hn";
 import { fetchAdzuna } from "./adapters/adzuna";
+import { fetchRemoteOk } from "./adapters/remoteok";
 import { buildDigest, storeDigest } from "./digest";
 
 // Flush upserts this often so the peak in-memory Job buffer stays bounded
@@ -153,6 +154,7 @@ function buildFastTasks(env: Env): TaskSpec[] {
 
   tasks.push({ source: "himalayas", factory: (d) => fetchHimalayas({}, d) });
   tasks.push({ source: "hn", factory: (d) => fetchHn({}, d) });
+  tasks.push({ source: "remoteok", factory: (d) => fetchRemoteOk({}, d) });
 
   return tasks;
 }

@@ -1,0 +1,42 @@
+[
+  {
+    "last_updated": 1776960000,
+    "legal": "API Terms of Service: Please link back (with follow, and without nofollow!) to the URL on Remote OK and mention Remote OK as a source, so we get traffic back from your site."
+  },
+  {
+    "id": "1000001",
+    "slug": "remote-senior-software-engineer-acme",
+    "epoch": 1776873600,
+    "date": "2026-04-22T16:00:00+00:00",
+    "company": "Acme Remote",
+    "company_logo": "",
+    "position": "Software Engineer",
+    "tags": ["software", "python"],
+    "description": "Build platform infra used by thousands of devs.\n\nRequirements:\n- 3+ years\n- Python",
+    "location": "Worldwide",
+    "apply_url": "https://remoteOK.com/remote-jobs/remote-senior-software-engineer-acme-1000001",
+    "url": "https://remoteOK.com/remote-jobs/remote-senior-software-engineer-acme-1000001",
+    "salary_min": 120000,
+    "salary_max": 180000
+  },
+  {
+    "id": "1000002",
+    "slug": "remote-data-engineer-beta",
+    "epoch": 1776873700,
+    "date": "2026-04-22T16:01:40+00:00",
+    "company": "Beta Labs",
+    "position": "Data Engineer",
+    "tags": ["data"],
+    "description": "Data pipelines on Snowflake.",
+    "location": "",
+    "apply_url": "https://remoteOK.com/remote-jobs/remote-data-engineer-beta-1000002",
+    "salary_min": 0,
+    "salary_max": 0
+  },
+  {
+    "id": "1000003",
+    "company": "NoLinkCo",
+    "position": "Marketer",
+    "description": "no apply link at all — should be skipped"
+  }
+]
