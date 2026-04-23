@@ -85,8 +85,8 @@ export function humanizeSlug(slug: string): string {
     .join(" ");
 }
 
-// Parse an ATS "workplaceType" style field — Lever and Ashby both surface
-// strings like "Remote", "onsite", "REMOTE", "ON_SITE", "hybrid".
+// Parse an ATS "workplaceType" style field — Lever / Ashby / Eightfold all
+// surface strings like "Remote", "onsite", "REMOTE", "ON_SITE", "hybrid".
 // Workday instead hides this inside locations text, which parseRemoteFromLocation
 // (inlined in workday.ts) handles separately.
 export function parseWorkplaceType(value: string | null | undefined): boolean | null {
@@ -111,8 +111,8 @@ export function parseEmploymentType(value: string | null | undefined): Employmen
   return null;
 }
 
-// Heuristic clearance detection from title + description text. Called by the
-// Workday adapter against defense-prime postings.
+// Heuristic clearance detection from title + description text. Called by
+// Workday and Eightfold adapters against defense-prime postings.
 export function parseClearance(
   title: string,
   description: string | null | undefined,

@@ -7,15 +7,12 @@ import { PerKeyThrottle } from "./util/rate-limit";
 import type { RunLogEntry } from "./db";
 import { upsertJobs, writeRunLogBatch } from "./db";
 
-import { GREENHOUSE_TOKENS } from "./config/targets-greenhouse";
-import { LEVER_COMPANIES } from "./config/targets-lever";
-import { ASHBY_ORGS } from "./config/targets-ashby";
-import { WORKDAY_TARGETS } from "./config/targets-workday";
 import { fetchGreenhouse } from "./adapters/greenhouse";
 import { fetchLever } from "./adapters/lever";
 import { fetchAshby } from "./adapters/ashby";
 import { fetchUsaJobs } from "./adapters/usajobs";
-import { fetchWorkday } from "./adapters/workday";
+import { fetchWorkday, type WorkdayTarget } from "./adapters/workday";
+import { fetchEightfold, type EightfoldTarget } from "./adapters/eightfold";
 import { fetchHimalayas } from "./adapters/himalayas";
 import { fetchHn } from "./adapters/hn";
 import { fetchAdzuna } from "./adapters/adzuna";
@@ -24,14 +21,42 @@ import { fetchMuse } from "./adapters/themuse";
 import { fetchJobicy } from "./adapters/jobicy";
 import { buildDigest, storeDigest } from "./digest";
 
-// Flush upserts this often so the peak in-memory Job buffer stays bounded
-// regardless of how many postings an adapter yields. 50 matches upsertJobs
-// chunk size so a full buffer is exactly one db.batch subrequest.
+import {
+  ensureSeeds,
+  selectTenantsToFetch,
+  updateTenantHealth,
+  type AtsKind,
+  type SeedEntry,
+} from "./ats-registry";
+
+import greenhouseSeed from "./seeds/greenhouse-slugs.json" with { type: "json" };
+import leverSeed from "./seeds/lever-slugs.json" with { type: "json" };
+import ashbySeed from "./seeds/ashby-slugs.json" with { type: "json" };
+import workdaySeed from "./seeds/workday-tenants.json" with { type: "json" };
+import eightfoldSeed from "./seeds/eightfold-tenants.json" with { type: "json" };
+
 const FLUSH_EVERY = 50;
+
+// Per-ATS shard size per cron. Sized so (shard × subrequests_per_tenant)
+// stays comfortably below Workers' 1,000-subrequest-per-invocation ceiling
+// after accounting for the zero-curation aggregator tasks.
+const SHARD_LIMITS = {
+  fast: {
+    greenhouse: 100,
+    lever: 50,
+    ashby: 50,
+  },
+  slow: {
+    workday: 15,   // ~21 subreq/tenant (1 list + ≤20 detail fan-out)
+    eightfold: 20, // ~4 subreq/tenant (≤4 pages)
+  },
+} as const;
 
 interface TaskSpec {
   source: string;
   factory: (deps: Deps) => AsyncIterable<Job>;
+  // Called after the task completes — used to update ats_tenants health.
+  onComplete?: (outcome: TaskOutcome) => Promise<void>;
 }
 
 interface TaskOutcome {
@@ -73,7 +98,6 @@ async function runAdapterTask(
     }
     await flush();
   } catch (err) {
-    // Drop the partial buffer on purpose — the next cron will re-fetch.
     error = err instanceof Error ? err.message : String(err);
   }
 
@@ -86,6 +110,19 @@ async function runAdapterTask(
     ...(error !== undefined ? { error } : {}),
   };
   logger.log({ t: "adapter_run", ...outcome });
+
+  if (spec.onComplete) {
+    try {
+      await spec.onComplete(outcome);
+    } catch (cErr) {
+      logger.log({
+        t: "on_complete_error",
+        source: spec.source,
+        error: cErr instanceof Error ? cErr.message : String(cErr),
+      });
+    }
+  }
+
   return outcome;
 }
 
@@ -129,17 +166,67 @@ function fulfilledOutcomes(
   return results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
 }
 
-function buildFastTasks(env: Env): TaskSpec[] {
+// Seed ats_tenants once per cron so freshly-added JSON entries are picked up
+// on the next run without a migration. Existing rows are untouched.
+async function seedAll(db: D1Database, nowIso: string): Promise<void> {
+  const workday: SeedEntry[] = (workdaySeed as readonly WorkdayTarget[]).map(
+    (t) => ({ slug: t.slug, meta: { ...t } }),
+  );
+  const eightfold: SeedEntry[] = (eightfoldSeed as readonly EightfoldTarget[]).map(
+    (t) => ({ slug: t.slug, meta: { ...t } }),
+  );
+  const gh: SeedEntry[] = (greenhouseSeed as readonly string[]).map((s) => ({ slug: s }));
+  const lv: SeedEntry[] = (leverSeed as readonly string[]).map((s) => ({ slug: s }));
+  const ab: SeedEntry[] = (ashbySeed as readonly string[]).map((s) => ({ slug: s }));
+
+  await Promise.all([
+    ensureSeeds(db, "greenhouse", gh, nowIso),
+    ensureSeeds(db, "lever", lv, nowIso),
+    ensureSeeds(db, "ashby", ab, nowIso),
+    ensureSeeds(db, "workday", workday, nowIso),
+    ensureSeeds(db, "eightfold", eightfold, nowIso),
+  ]);
+}
+
+// Build a TaskSpec for a given tenant, wiring onComplete to update D1 health.
+function atsTaskSpec(
+  env: Env,
+  ats: AtsKind,
+  slug: string,
+  factory: (deps: Deps) => AsyncIterable<Job>,
+  nowIso: string,
+): TaskSpec {
+  return {
+    source: `${ats}:${slug}`,
+    factory,
+    onComplete: (outcome) =>
+      updateTenantHealth(
+        env.DB,
+        ats,
+        slug,
+        { jobsFetched: outcome.jobsFetched, errored: outcome.error !== undefined },
+        nowIso,
+      ),
+  };
+}
+
+async function buildFastTasks(env: Env, nowIso: string): Promise<TaskSpec[]> {
   const tasks: TaskSpec[] = [];
 
-  for (const token of GREENHOUSE_TOKENS) {
-    tasks.push({ source: `greenhouse:${token}`, factory: (d) => fetchGreenhouse(token, d) });
+  const [ghShard, leverShard, ashbyShard] = await Promise.all([
+    selectTenantsToFetch(env.DB, "greenhouse", SHARD_LIMITS.fast.greenhouse),
+    selectTenantsToFetch(env.DB, "lever", SHARD_LIMITS.fast.lever),
+    selectTenantsToFetch(env.DB, "ashby", SHARD_LIMITS.fast.ashby),
+  ]);
+
+  for (const t of ghShard) {
+    tasks.push(atsTaskSpec(env, "greenhouse", t.slug, (d) => fetchGreenhouse(t.slug, d), nowIso));
   }
-  for (const company of LEVER_COMPANIES) {
-    tasks.push({ source: `lever:${company}`, factory: (d) => fetchLever(company, d) });
+  for (const t of leverShard) {
+    tasks.push(atsTaskSpec(env, "lever", t.slug, (d) => fetchLever(t.slug, d), nowIso));
   }
-  for (const org of ASHBY_ORGS) {
-    tasks.push({ source: `ashby:${org}`, factory: (d) => fetchAshby(org, d) });
+  for (const t of ashbyShard) {
+    tasks.push(atsTaskSpec(env, "ashby", t.slug, (d) => fetchAshby(t.slug, d), nowIso));
   }
 
   if (env.USAJOBS_API_KEY && env.USAJOBS_USER_AGENT) {
@@ -163,16 +250,41 @@ function buildFastTasks(env: Env): TaskSpec[] {
   return tasks;
 }
 
-function buildSlowTasks(): TaskSpec[] {
+async function buildSlowTasks(env: Env, nowIso: string): Promise<TaskSpec[]> {
   const tasks: TaskSpec[] = [];
-
-  // 1 req/sec per Workday tenant (keyed by tenant), unthrottled across tenants.
   const workdayThrottle = new PerKeyThrottle(1000);
-  for (const target of WORKDAY_TARGETS) {
-    tasks.push({
-      source: `workday:${target.slug}`,
-      factory: (d) => fetchWorkday({ target, throttle: workdayThrottle }, d),
-    });
+
+  const [workdayShard, eightfoldShard] = await Promise.all([
+    selectTenantsToFetch(env.DB, "workday", SHARD_LIMITS.slow.workday),
+    selectTenantsToFetch(env.DB, "eightfold", SHARD_LIMITS.slow.eightfold),
+  ]);
+
+  for (const t of workdayShard) {
+    const target = t.meta as unknown as WorkdayTarget | null;
+    if (!target) continue;
+    tasks.push(
+      atsTaskSpec(
+        env,
+        "workday",
+        t.slug,
+        (d) => fetchWorkday({ target, throttle: workdayThrottle }, d),
+        nowIso,
+      ),
+    );
+  }
+
+  for (const t of eightfoldShard) {
+    const target = t.meta as unknown as EightfoldTarget | null;
+    if (!target) continue;
+    tasks.push(
+      atsTaskSpec(
+        env,
+        "eightfold",
+        t.slug,
+        (d) => fetchEightfold({ target }, d),
+        nowIso,
+      ),
+    );
   }
 
   return tasks;
@@ -185,7 +297,9 @@ export async function runFast(
 ): Promise<void> {
   const logger = consoleLogger;
   const started = Date.now();
-  const tasks = buildFastTasks(env);
+
+  await seedAll(env.DB, scheduledAt);
+  const tasks = await buildFastTasks(env, scheduledAt);
 
   logger.log({ t: "cron_start", cron: "fast", scheduledAt, task_count: tasks.length });
 
@@ -220,7 +334,9 @@ export async function runSlow(
 ): Promise<void> {
   const logger = consoleLogger;
   const started = Date.now();
-  const tasks = buildSlowTasks();
+
+  await seedAll(env.DB, scheduledAt);
+  const tasks = await buildSlowTasks(env, scheduledAt);
 
   logger.log({ t: "cron_start", cron: "slow", scheduledAt, task_count: tasks.length });
 

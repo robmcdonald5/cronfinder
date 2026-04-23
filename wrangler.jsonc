@@ -7,7 +7,7 @@
 	"preview_urls": false,
 	// Two cron cadences, offset from the top of the hour to avoid CF load spikes.
 	// Fast: every 4 hours at :17 past -> Greenhouse, Lever, Ashby, USAJobs, HN, Himalayas.
-	// Slow: daily at 07:23 UTC -> Workday fan-out, GitHub repos, digest.
+	// Slow: daily at 07:23 UTC -> Workday fan-out, Eightfold, digest.
 	"triggers": {
 		"crons": [
 			"17 */4 * * *",

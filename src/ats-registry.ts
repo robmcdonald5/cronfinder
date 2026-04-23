@@ -1,0 +1,143 @@
+// Query/update helpers for the ats_tenants table. Owns the small amount of
+// SQL + status-transition logic the cron handlers need; nothing else should
+// issue raw queries against ats_tenants.
+
+export type AtsKind = "greenhouse" | "lever" | "ashby" | "workday" | "eightfold";
+export type AtsStatus = "active" | "dead";
+
+export interface AtsTenant {
+  ats: AtsKind;
+  slug: string;
+  meta: Record<string, unknown> | null;
+  status: AtsStatus;
+  last_fetched_at: string | null;
+  consecutive_failures: number;
+  jobs_last_seen: number | null;
+}
+
+export interface SeedEntry {
+  slug: string;
+  meta?: Record<string, unknown> | null;
+}
+
+export interface RunOutcome {
+  jobsFetched: number;
+  errored: boolean;
+}
+
+// Consecutive failures that mark a tenant as dead (stops polling). One-off
+// 5xx blips shouldn't retire a tenant, but repeated 404s should.
+const DEAD_THRESHOLD = 5;
+
+// Insert seed rows that don't yet exist. INSERT OR IGNORE keeps health data
+// untouched for rows already in the table, so running this on every cron is
+// safe and idempotent.
+export async function ensureSeeds(
+  db: D1Database,
+  ats: AtsKind,
+  entries: readonly SeedEntry[],
+  nowIso: string,
+): Promise<void> {
+  if (entries.length === 0) return;
+  const stmts = entries.map((e) =>
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO ats_tenants
+           (ats, slug, meta, added_at, discovered_via, status)
+         VALUES (?, ?, ?, ?, 'seed', 'active')`,
+      )
+      .bind(ats, e.slug, e.meta ? JSON.stringify(e.meta) : null, nowIso),
+  );
+  await db.batch(stmts);
+}
+
+// Pick the N oldest-fetched active tenants for `ats`. Never-fetched rows
+// (NULL last_fetched_at) sort first so fresh seeds are prioritized.
+export async function selectTenantsToFetch(
+  db: D1Database,
+  ats: AtsKind,
+  limit: number,
+): Promise<AtsTenant[]> {
+  const res = await db
+    .prepare(
+      `SELECT ats, slug, meta, status, last_fetched_at,
+              consecutive_failures, jobs_last_seen
+       FROM ats_tenants
+       WHERE ats = ? AND status = 'active'
+       ORDER BY (last_fetched_at IS NULL) DESC, last_fetched_at ASC
+       LIMIT ?`,
+    )
+    .bind(ats, limit)
+    .all<{
+      ats: string;
+      slug: string;
+      meta: string | null;
+      status: string;
+      last_fetched_at: string | null;
+      consecutive_failures: number;
+      jobs_last_seen: number | null;
+    }>();
+  return (res.results ?? []).map((r) => ({
+    ats: r.ats as AtsKind,
+    slug: r.slug,
+    meta: r.meta ? (JSON.parse(r.meta) as Record<string, unknown>) : null,
+    status: r.status as AtsStatus,
+    last_fetched_at: r.last_fetched_at,
+    consecutive_failures: r.consecutive_failures,
+    jobs_last_seen: r.jobs_last_seen,
+  }));
+}
+
+// Update health after a run. Separated from selectTenantsToFetch so tests can
+// exercise the transition logic without SQL — see computeHealthUpdate below.
+export async function updateTenantHealth(
+  db: D1Database,
+  ats: AtsKind,
+  slug: string,
+  outcome: RunOutcome,
+  nowIso: string,
+): Promise<void> {
+  const row = await db
+    .prepare(`SELECT consecutive_failures FROM ats_tenants WHERE ats = ? AND slug = ?`)
+    .bind(ats, slug)
+    .first<{ consecutive_failures: number }>();
+  if (!row) return;
+
+  const next = computeHealthUpdate(
+    { consecutive_failures: row.consecutive_failures },
+    outcome,
+  );
+
+  await db
+    .prepare(
+      `UPDATE ats_tenants
+       SET last_fetched_at = ?,
+           last_ok_at = CASE WHEN ? = 0 THEN ? ELSE last_ok_at END,
+           consecutive_failures = ?,
+           jobs_last_seen = ?,
+           status = ?
+       WHERE ats = ? AND slug = ?`,
+    )
+    .bind(
+      nowIso,
+      outcome.errored ? 1 : 0,
+      nowIso,
+      next.consecutive_failures,
+      outcome.jobsFetched,
+      next.status,
+      ats,
+      slug,
+    )
+    .run();
+}
+
+// Pure function — used directly from updateTenantHealth and exercised by
+// unit tests so we don't need a real D1 to verify transition rules.
+export function computeHealthUpdate(
+  prev: { consecutive_failures: number },
+  outcome: RunOutcome,
+): { consecutive_failures: number; status: AtsStatus } {
+  const failures = outcome.errored ? prev.consecutive_failures + 1 : 0;
+  const status: AtsStatus = failures >= DEAD_THRESHOLD ? "dead" : "active";
+  return { consecutive_failures: failures, status };
+}

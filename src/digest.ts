@@ -133,7 +133,7 @@ type Category =
 
 function categoryOf(source: string): Category {
   if (source === "usajobs") return "Federal";
-  if (source.startsWith("workday:")) {
+  if (source.startsWith("workday:") || source.startsWith("eightfold:")) {
     return "Defense / Government Contractors";
   }
   if (
