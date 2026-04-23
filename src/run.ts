@@ -21,6 +21,7 @@ import { fetchMuse } from "./adapters/themuse";
 import { fetchJobicy } from "./adapters/jobicy";
 import { buildDigest, storeDigest } from "./digest";
 import { passesTitlePrefilter } from "./config/filters";
+import { runDiscovery } from "./discovery";
 
 import {
   ensureSeeds,
@@ -319,6 +320,20 @@ export async function runFast(
     await writeRunLogBatch(env.DB, toRunLogEntries(fulfilledOutcomes(results), "fast", scheduledAt));
   } catch (err) {
     logger.log({ t: "run_log_error", error: err instanceof Error ? err.message : String(err) });
+  }
+
+  // Auto-discovery: probe aggregator-surfaced company names against
+  // Greenhouse / Lever / Ashby to grow the ats_tenants registry without
+  // manual edits. Runs after ingestion so we have fresh company-name data.
+  try {
+    const discoveryDeps: Deps = { fetch: globalThis.fetch.bind(globalThis), logger };
+    const summary = await runDiscovery(env.DB, discoveryDeps, scheduledAt);
+    logger.log({ t: "auto_discovery", ...summary });
+  } catch (err) {
+    logger.log({
+      t: "auto_discovery_error",
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   const sum = summarize(results);

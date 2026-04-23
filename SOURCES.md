@@ -24,12 +24,17 @@ Inventory of every external API, infrastructure service, and build dependency cr
 
 The ATS-direct sources (Greenhouse, Lever, Ashby, Workday, Eightfold) no longer iterate over hardcoded company lists. Instead, every cron:
 
-1. Upserts seed entries from `src/seeds/*.json` into `ats_tenants` (idempotent, preserves health data across deploys).
-2. `SELECT`s the oldest-polled N tenants per ATS (`SHARD_LIMITS` in `src/run.ts`) ordered by `last_fetched_at ASC NULLS FIRST`.
-3. Runs the adapter for each, and after completion writes back `last_fetched_at`, `last_ok_at`, `jobs_last_seen`, and increments `consecutive_failures` on errors.
-4. Auto-retires: after 5 consecutive errored runs a tenant is marked `status='dead'` and stops being polled. `ats_probe_failures` acts as a 30-day negative cache for auto-discovery probes (Phase 3d).
+1. Upserts seed entries from `src/seeds/*.json` into `ats_tenants` (idempotent, preserves health data across deploys). Seeds come from the community-maintained `Feashliaa/job-board-aggregator` corpus plus any manual additions — Greenhouse ≈8k slugs, Lever ≈4.3k, Ashby ≈2.8k, Workday 9 curated defense primes, Eightfold currently just Netflix.
+2. `SELECT`s the oldest-polled N tenants per ATS (`SHARD_LIMITS` in `src/run.ts`) ordered by `last_fetched_at ASC NULLS FIRST`. Fast cron shards: greenhouse 200, lever 100, ashby 75. Slow cron: workday 15, eightfold 20.
+3. Runs the adapter for each; `runAdapterTask` applies `passesTitlePrefilter` before any upsert so the `jobs` table stays focused on SWE / AI-ML / security roles.
+4. Writes `last_fetched_at`, `last_ok_at`, `jobs_last_seen` back, increments `consecutive_failures` on errors.
+5. After 5 consecutive failures a tenant is marked `status='dead'` and stops being polled. `ats_probe_failures` acts as a 30-day negative cache for auto-discovery probes.
 
-The helper module is `src/ats-registry.ts`; SQL lives in `migrations/0003_ats_registry.sql`. To add a company, add a slug to the appropriate seed JSON — the next cron picks it up. To remove, delete it from the seed JSON AND `DELETE FROM ats_tenants WHERE ats=? AND slug=?` (seeds only INSERT, they don't prune).
+## Auto-discovery
+
+After each fast cron's ingestion, `src/discovery.ts` harvests the top ~80 company names from recent aggregator output (Adzuna / RemoteOK / TheMuse / Jobicy / Himalayas / HN), derives up to 3 slug candidates per company (first-word / compact / hyphenated, with legal suffixes like `Inc`/`LLC` stripped), and probes Greenhouse → Lever → Ashby in that order. Budget: 30 probes per cron. 200 response → INSERT with `discovered_via='auto'`. 404 → 30-day negative cache entry in `ats_probe_failures`. Short-circuits once a hit is found per company so we don't waste probes on a slug that's clearly on Greenhouse against Lever/Ashby.
+
+The helper module is `src/ats-registry.ts`; SQL lives in `migrations/0003_ats_registry.sql`. To add a company, add a slug to the appropriate seed JSON — the next cron picks it up. To remove, delete from the seed JSON AND `DELETE FROM ats_tenants WHERE ats=? AND slug=?` (seeds only INSERT, they don't prune).
 
 ## Cloudflare infrastructure
 
