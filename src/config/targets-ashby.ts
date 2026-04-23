@@ -7,9 +7,7 @@ export const ASHBY_ORGS: readonly string[] = [
   "deel",
   "deliveroo",
   "handshake",
-  "mercury",
   "openai",
   "perplexity",
   "snowflake",
-  "vercel",
 ] as const;

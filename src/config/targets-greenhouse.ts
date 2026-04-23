@@ -8,6 +8,7 @@
 export const GREENHOUSE_TOKENS: readonly string[] = [
   "airbnb",
   "anthropic",
+  "attentive",
   "brex",
   "cloudflare",
   "coinbase",
@@ -16,6 +17,7 @@ export const GREENHOUSE_TOKENS: readonly string[] = [
   "figma",
   "gusto",
   "instacart",
+  "mercury",
   "pinterest",
   "reddit",
   "robinhood",

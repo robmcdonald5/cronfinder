@@ -11,13 +11,11 @@ import { GREENHOUSE_TOKENS } from "./config/targets-greenhouse";
 import { LEVER_COMPANIES } from "./config/targets-lever";
 import { ASHBY_ORGS } from "./config/targets-ashby";
 import { WORKDAY_TARGETS } from "./config/targets-workday";
-import { EIGHTFOLD_TARGETS } from "./config/targets-eightfold";
 import { fetchGreenhouse } from "./adapters/greenhouse";
 import { fetchLever } from "./adapters/lever";
 import { fetchAshby } from "./adapters/ashby";
 import { fetchUsaJobs } from "./adapters/usajobs";
 import { fetchWorkday } from "./adapters/workday";
-import { fetchEightfold } from "./adapters/eightfold";
 import { fetchHimalayas } from "./adapters/himalayas";
 import { fetchHn } from "./adapters/hn";
 import { fetchAdzuna } from "./adapters/adzuna";
@@ -168,12 +166,6 @@ function buildSlowTasks(): TaskSpec[] {
     tasks.push({
       source: `workday:${target.slug}`,
       factory: (d) => fetchWorkday({ target, throttle: workdayThrottle }, d),
-    });
-  }
-  for (const target of EIGHTFOLD_TARGETS) {
-    tasks.push({
-      source: `eightfold:${target.slug}`,
-      factory: (d) => fetchEightfold({ target }, d),
     });
   }
 

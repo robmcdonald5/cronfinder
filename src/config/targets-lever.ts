@@ -6,8 +6,6 @@
 // confirming it returns 200 from the API.
 
 export const LEVER_COMPANIES: readonly string[] = [
-  "attentive",
-  "netflix",
   "palantir",
   "ro",
 ] as const;
