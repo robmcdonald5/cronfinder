@@ -29,9 +29,12 @@ export interface RunOutcome {
 // 5xx blips shouldn't retire a tenant, but repeated 404s should.
 const DEAD_THRESHOLD = 5;
 
+// D1 caps a single batch at 1,000 prepared statements. Chunk well below that.
+const SEED_CHUNK = 500;
+
 // Insert seed rows that don't yet exist. INSERT OR IGNORE keeps health data
 // untouched for rows already in the table, so running this on every cron is
-// safe and idempotent.
+// safe and idempotent. Chunked to respect D1's per-batch statement limit.
 export async function ensureSeeds(
   db: D1Database,
   ats: AtsKind,
@@ -39,16 +42,19 @@ export async function ensureSeeds(
   nowIso: string,
 ): Promise<void> {
   if (entries.length === 0) return;
-  const stmts = entries.map((e) =>
-    db
-      .prepare(
-        `INSERT OR IGNORE INTO ats_tenants
-           (ats, slug, meta, added_at, discovered_via, status)
-         VALUES (?, ?, ?, ?, 'seed', 'active')`,
-      )
-      .bind(ats, e.slug, e.meta ? JSON.stringify(e.meta) : null, nowIso),
-  );
-  await db.batch(stmts);
+  for (let i = 0; i < entries.length; i += SEED_CHUNK) {
+    const chunk = entries.slice(i, i + SEED_CHUNK);
+    const stmts = chunk.map((e) =>
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO ats_tenants
+             (ats, slug, meta, added_at, discovered_via, status)
+           VALUES (?, ?, ?, ?, 'seed', 'active')`,
+        )
+        .bind(ats, e.slug, e.meta ? JSON.stringify(e.meta) : null, nowIso),
+    );
+    await db.batch(stmts);
+  }
 }
 
 // Pick the N oldest-fetched active tenants for `ats`. Never-fetched rows

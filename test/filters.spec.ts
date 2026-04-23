@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldAccept } from "../src/config/filters";
+import { passesTitlePrefilter, shouldAccept } from "../src/config/filters";
 import type { Job } from "../src/normalize";
 
 function job(overrides: Partial<Job> = {}): Job {
@@ -137,5 +137,39 @@ describe("filters.shouldAccept", () => {
 
   it("accepts postings with no years-of-experience mentioned", () => {
     expect(shouldAccept(job({ description_text: null })).accept).toBe(true);
+  });
+});
+
+describe("passesTitlePrefilter (ingest-time gate)", () => {
+  it("accepts canonical SWE / data / ML titles", () => {
+    expect(passesTitlePrefilter("Software Engineer")).toBe(true);
+    expect(passesTitlePrefilter("Senior Backend Engineer")).toBe(true);
+    expect(passesTitlePrefilter("Machine Learning Engineer")).toBe(true);
+    expect(passesTitlePrefilter("AI Engineer")).toBe(true);
+    expect(passesTitlePrefilter("Security Engineer")).toBe(true);
+  });
+
+  it("rejects unrelated roles", () => {
+    expect(passesTitlePrefilter("Product Designer")).toBe(false);
+    expect(passesTitlePrefilter("Marketing Manager")).toBe(false);
+    expect(passesTitlePrefilter("Sales Development Rep")).toBe(false);
+  });
+
+  it("rejects leadership / intern titles via TITLE_EXCLUDE", () => {
+    expect(passesTitlePrefilter("Staff Software Engineer")).toBe(false);
+    expect(passesTitlePrefilter("Software Engineering Intern")).toBe(false);
+    expect(passesTitlePrefilter("Director of Engineering")).toBe(false);
+  });
+
+  it("handles HN's full-first-line titles (company | loc | role format)", () => {
+    expect(
+      passesTitlePrefilter("Acme Corp | Remote | Senior Software Engineer | REMOTE"),
+    ).toBe(true);
+  });
+
+  it("returns false for nullish or empty titles", () => {
+    expect(passesTitlePrefilter(null)).toBe(false);
+    expect(passesTitlePrefilter(undefined)).toBe(false);
+    expect(passesTitlePrefilter("")).toBe(false);
   });
 });

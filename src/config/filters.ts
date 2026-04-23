@@ -218,6 +218,18 @@ const COMPANY_EXCLUDE_SET = new Set(
   COMPANY_EXCLUDE.map((c) => c.toLowerCase().trim()),
 );
 
+// Cheap title-only gate used at ingest time (runAdapterTask). The full
+// shouldAccept runs later at digest time with location / clearance / years
+// checks. Filtering at ingest keeps the jobs table lean when the ats_tenants
+// registry grows to thousands of entries.
+export function passesTitlePrefilter(title: string | null | undefined): boolean {
+  if (!title) return false;
+  const t = title.toLowerCase();
+  if (TITLE_INCLUDE.length > 0 && !TITLE_INCLUDE_RE.test(t)) return false;
+  if (TITLE_EXCLUDE_RE && TITLE_EXCLUDE_RE.test(t)) return false;
+  return true;
+}
+
 export function shouldAccept(job: FilterInput): FilterResult {
   const titleLower = job.title.toLowerCase();
   const companyLower = job.company.toLowerCase().trim();

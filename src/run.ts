@@ -20,6 +20,7 @@ import { fetchRemoteOk } from "./adapters/remoteok";
 import { fetchMuse } from "./adapters/themuse";
 import { fetchJobicy } from "./adapters/jobicy";
 import { buildDigest, storeDigest } from "./digest";
+import { passesTitlePrefilter } from "./config/filters";
 
 import {
   ensureSeeds,
@@ -42,13 +43,13 @@ const FLUSH_EVERY = 50;
 // after accounting for the zero-curation aggregator tasks.
 const SHARD_LIMITS = {
   fast: {
-    greenhouse: 100,
-    lever: 50,
-    ashby: 50,
+    greenhouse: 200,  // ~200 list + post-prefilter upserts (≤~100 batches)
+    lever: 100,
+    ashby: 75,
   },
   slow: {
-    workday: 15,   // ~21 subreq/tenant (1 list + ≤20 detail fan-out)
-    eightfold: 20, // ~4 subreq/tenant (≤4 pages)
+    workday: 15,      // ~21 subreq/tenant (1 list + ≤20 detail fan-out)
+    eightfold: 20,    // ~4 subreq/tenant (≤4 pages)
   },
 } as const;
 
@@ -63,6 +64,7 @@ interface TaskOutcome {
   source: string;
   durationMs: number;
   jobsFetched: number;
+  jobsFiltered: number;
   jobsNew: number;
   jobsUpdated: number;
   error?: string;
@@ -78,6 +80,7 @@ async function runAdapterTask(
   const deps: Deps = { fetch: globalThis.fetch.bind(globalThis), logger };
   let buffer: Job[] = [];
   let fetched = 0;
+  let filtered = 0;
   let inserted = 0;
   let updated = 0;
   let error: string | undefined;
@@ -93,6 +96,10 @@ async function runAdapterTask(
   try {
     for await (const job of spec.factory(deps)) {
       fetched++;
+      if (!passesTitlePrefilter(job.title)) {
+        filtered++;
+        continue;
+      }
       buffer.push(job);
       if (buffer.length >= FLUSH_EVERY) await flush();
     }
@@ -105,6 +112,7 @@ async function runAdapterTask(
     source: spec.source,
     durationMs: Date.now() - start,
     jobsFetched: fetched,
+    jobsFiltered: filtered,
     jobsNew: inserted,
     jobsUpdated: updated,
     ...(error !== undefined ? { error } : {}),
