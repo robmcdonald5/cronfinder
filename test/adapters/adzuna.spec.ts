@@ -4,7 +4,11 @@ import type { Deps } from "../../src/util/deps";
 import fixture from "../fixtures/adzuna/page1.json" with { type: "json" };
 import { jsonResponse, makeFetchStub, silentLogger } from "../helpers/fetch-stub";
 
-const CREDS = { appId: "APP", appKey: "KEY" };
+const CREDS = {
+  appId: "APP",
+  appKey: "KEY",
+  keywords: ["software"] as const,
+};
 
 function deps(): Deps {
   return {
@@ -101,6 +105,30 @@ describe("adzuna adapter", () => {
     };
     for await (const _ of fetchAdzuna(CREDS, countingDeps)) void _;
     expect(pages).toBe(1);
+  });
+
+  it("fans out across keywords and dedups by external_id", async () => {
+    const calls: string[] = [];
+    const multiDeps: Deps = {
+      fetch: makeFetchStub({
+        "https://api.adzuna.com/v1/api/jobs/us/search/": (req) => {
+          const u = new URL(req.url);
+          calls.push(u.searchParams.get("what") ?? "");
+          // Every keyword returns the SAME fixture so every id is a duplicate
+          // of the first keyword's hits. Dedup should collapse them.
+          return jsonResponse(fixture);
+        },
+      }),
+      logger: silentLogger(),
+    };
+    const out = [];
+    for await (const j of fetchAdzuna(
+      { ...CREDS, keywords: ["software", "developer", "devops"], maxPages: 1 },
+      multiDeps,
+    )) out.push(j);
+    // 3 unique jobs in fixture, duplicated across 3 keywords → still 3 out.
+    expect(out).toHaveLength(3);
+    expect(calls).toEqual(["software", "developer", "devops"]);
   });
 
   it("skips rows with no company name", async () => {
