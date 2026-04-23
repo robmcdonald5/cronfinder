@@ -1,0 +1,35 @@
+{
+  "page": 0,
+  "page_count": 2,
+  "items_per_page": 20,
+  "total": 25,
+  "results": [
+    {
+      "id": 20000001,
+      "name": "Senior Software Engineer",
+      "company": { "id": 101, "short_name": "acme", "name": "Acme Corp" },
+      "locations": [{ "name": "New York, NY" }],
+      "categories": [{ "name": "Software Engineering" }],
+      "levels": [{ "name": "Senior Level", "short_name": "senior" }],
+      "publication_date": "2026-04-20T12:00:00Z",
+      "refs": { "landing_page": "https://www.themuse.com/jobs/acme/senior-software-engineer-abc123" },
+      "contents": "<p>Build distributed systems on <b>Python</b> and Go.</p>"
+    },
+    {
+      "id": 20000002,
+      "name": "Backend Engineer",
+      "company": { "id": 102, "short_name": "beta", "name": "Beta Labs" },
+      "locations": [{ "name": "Flexible / Remote" }],
+      "categories": [{ "name": "Software Engineering" }],
+      "publication_date": "2026-04-21T09:30:00Z",
+      "refs": { "landing_page": "https://www.themuse.com/jobs/beta/backend-engineer-def456" },
+      "contents": "<p>Remote-first API team.</p>"
+    },
+    {
+      "id": 20000003,
+      "name": "Platform Engineer — no apply link",
+      "company": { "id": 103, "name": "Gamma" },
+      "categories": [{ "name": "Software Engineering" }]
+    }
+  ]
+}

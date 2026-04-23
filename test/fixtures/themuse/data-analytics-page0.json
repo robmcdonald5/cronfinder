@@ -1,0 +1,28 @@
+{
+  "page": 0,
+  "page_count": 1,
+  "items_per_page": 20,
+  "total": 2,
+  "results": [
+    {
+      "id": 20000002,
+      "name": "Backend Engineer",
+      "company": { "id": 102, "short_name": "beta", "name": "Beta Labs" },
+      "locations": [{ "name": "Flexible / Remote" }],
+      "categories": [{ "name": "Data and Analytics" }],
+      "publication_date": "2026-04-21T09:30:00Z",
+      "refs": { "landing_page": "https://www.themuse.com/jobs/beta/backend-engineer-def456" },
+      "contents": "<p>Remote-first API team.</p>"
+    },
+    {
+      "id": 20000004,
+      "name": "Data Engineer",
+      "company": { "id": 104, "name": "Delta Analytics" },
+      "locations": [{ "name": "Seattle, WA" }],
+      "categories": [{ "name": "Data and Analytics" }],
+      "publication_date": "2026-04-22T14:00:00Z",
+      "refs": { "landing_page": "https://www.themuse.com/jobs/delta/data-engineer-xyz789" },
+      "contents": "<p>Snowflake, dbt, Airflow.</p>"
+    }
+  ]
+}
