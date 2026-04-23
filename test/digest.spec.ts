@@ -143,4 +143,27 @@ describe("digest dedupeRows", () => {
     const caseVariant: Row = { ...anthropic, source: "adzuna", company: "  Anthropic, Inc.  " };
     expect(dedupeRows([anthropic, caseVariant])).toHaveLength(1);
   });
+
+  it("prefers direct-ATS over every aggregator", () => {
+    const aggregators: Row[] = [
+      { ...anthropic, source: "themuse", apply_url: "https://www.themuse.com/jobs/anthropic/..." },
+      { ...anthropic, source: "jobicy", apply_url: "https://jobicy.com/jobs/..." },
+      { ...anthropic, source: "remoteok", apply_url: "https://remoteok.com/remote-jobs/..." },
+      { ...anthropic, source: "himalayas", apply_url: "https://himalayas.app/jobs/..." },
+    ];
+    for (const agg of aggregators) {
+      const out = dedupeRows([agg, anthropic]);
+      expect(out).toHaveLength(1);
+      expect(out[0]!.source).toBe("greenhouse:anthropic");
+    }
+  });
+
+  it("falls back to a lower-priority aggregator when no direct-ATS row exists", () => {
+    const themuse: Row = { ...anthropic, source: "themuse" };
+    const remoteok: Row = { ...anthropic, source: "remoteok" };
+    // remoteok has lower priority number (9) than themuse (10), so it wins.
+    const out = dedupeRows([themuse, remoteok]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.source).toBe("remoteok");
+  });
 });

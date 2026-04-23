@@ -80,9 +80,15 @@ export async function buildDigest(
 
 // Lower number wins when two rows share a dedup key. Direct ATS links are
 // preferred over aggregators so the digest points at first-party apply URLs.
+// Aggregators with heavy tracker redirects score worst; those that surface
+// mostly-direct links (Himalayas, sometimes RemoteOK) score in between.
 function sourcePriority(source: string): number {
-  if (source === "adzuna") return 10;
+  if (source === "adzuna" || source === "themuse" || source === "jobicy") return 10;
+  if (source === "remoteok") return 9;
   if (source.startsWith("hn")) return 9;
+  if (source === "himalayas") return 8;
+  // Direct ATS (greenhouse:*, lever:*, ashby:*, workday:*, eightfold:*) and
+  // usajobs all keep priority 0 — their apply URLs are first-party.
   return 0;
 }
 
