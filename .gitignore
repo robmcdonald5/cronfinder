@@ -11,3 +11,6 @@ worker-configuration.d.ts
 # Pulled daily digests (npm run pull-digests).
 digests/
 
+# CLAUDE settings
+.claude/*
+CLAUDE.md

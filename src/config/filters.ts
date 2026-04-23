@@ -41,6 +41,16 @@ const TITLE_INCLUDE: readonly string[] = [
   "fullstack",
   "full[- ]stack",
   "application engineer",
+  "product engineer",
+  "growth engineer",
+  "technology analyst",
+  "technology associate",
+  "engineering associate",
+  "associate engineer",
+  "software consultant",
+  "technology consultant",
+  "apprentice",
+  "apprenticeship",
 
   // infra / ops
   "platform engineer",
@@ -58,6 +68,24 @@ const TITLE_INCLUDE: readonly string[] = [
   "forward deployed",
   "quality engineer",
   "developer advocate",
+  "solutions architect",
+  "implementation engineer",
+  "integration engineer",
+  "customer engineer",
+  "partner engineer",
+  "field engineer",
+  "deployment engineer",
+  "technical account manager",
+  "technical solutions",
+  "cloud support",
+  "technical support",
+  "support associate",
+  "reliability engineer",
+  "production engineer",
+  "developer relations",
+  "developer experience",
+  "developer evangelist",
+  "technical writer",
 
   // AI / ML
   "machine learning engineer",
@@ -70,6 +98,16 @@ const TITLE_INCLUDE: readonly string[] = [
   "\\bgen\\s?ai\\b",
   "prompt engineer",
   "automation engineer",
+  "applied scientist",
+  "machine learning scientist",
+  "\\bml scientist\\b",
+  "research engineer",
+  "research scientist",
+  "data scientist",
+  "\\bai scientist\\b",
+  "\\bllm engineer\\b",
+  "foundation model",
+  "inference engineer",
 
   // security
   "security engineer",
@@ -92,6 +130,8 @@ const TITLE_EXCLUDE: readonly string[] = [
   "\\bceo\\b",
   "senior manager",
   "engineering manager",
+  "\\bintern(ship)?\\b",
+  "co[- ]?op",
 ];
 
 // Companies that reject regardless of role (exact normalized match).
