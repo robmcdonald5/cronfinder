@@ -67,11 +67,21 @@ export async function* fetchWorkday(
   const maxPostings = config.maxPostings ?? 20;
   const source = `workday:${target.slug}`;
 
-  const base = `https://${target.tenant}.wd${target.wdN}.myworkdayjobs.com/wday/cxs/${target.tenant}/${target.site}`;
+  const origin = `https://${target.tenant}.wd${target.wdN}.myworkdayjobs.com`;
+  const base = `${origin}/wday/cxs/${target.tenant}/${target.site}`;
+  // Workday occasionally serves a Cloudflare/anti-bot HTML page to bare API
+  // clients. Sending a full browser fingerprint (UA + Sec-Fetch + Referer +
+  // Origin) makes the request indistinguishable from the real careers SPA.
   const headers = {
     "Content-Type": "application/json",
     Accept: "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
     "User-Agent": UA_BROWSER,
+    Origin: origin,
+    Referer: `${origin}/${target.site}`,
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
   };
 
   await throttle.wait(target.tenant);
@@ -83,6 +93,7 @@ export async function* fetchWorkday(
     }),
   );
   if (!listResp.ok) throw new Error(`${source}: list HTTP ${listResp.status}`);
+  if (isHtmlResponse(listResp)) throw new Error(`${source}: bot challenge (HTML body, status ${listResp.status})`);
 
   const listJson = (await listResp.json()) as unknown;
   const listParsed = ListResponse.safeParse(listJson);
@@ -102,7 +113,7 @@ export async function* fetchWorkday(
     let description: string | null = null;
     try {
       const detailResp = await deps.fetch(`${base}${posting.externalPath}`, { headers });
-      if (detailResp.ok) {
+      if (detailResp.ok && !isHtmlResponse(detailResp)) {
         const detailJson = (await detailResp.json()) as unknown;
         const detailParsed = DetailResponse.safeParse(detailJson);
         description = detailParsed.success
@@ -140,4 +151,9 @@ export async function* fetchWorkday(
       posted_at: posting.startDate ?? null,
     };
   }
+}
+
+function isHtmlResponse(resp: Response): boolean {
+  const ct = resp.headers.get("content-type") ?? "";
+  return ct.toLowerCase().includes("text/html");
 }
