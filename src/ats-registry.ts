@@ -58,7 +58,9 @@ export async function ensureSeeds(
 }
 
 // Pick the N oldest-fetched active tenants for `ats`. Never-fetched rows
-// (NULL last_fetched_at) sort first so fresh seeds are prioritized.
+// (NULL last_fetched_at) sort first so fresh seeds are prioritized; within
+// that group, newest-added wins so auto-discovered tenants get probed within
+// hours instead of waiting ~5 days for the seed pool to drain.
 export async function selectTenantsToFetch(
   db: D1Database,
   ats: AtsKind,
@@ -70,7 +72,7 @@ export async function selectTenantsToFetch(
               consecutive_failures, jobs_last_seen
        FROM ats_tenants
        WHERE ats = ? AND status = 'active'
-       ORDER BY last_fetched_at ASC NULLS FIRST
+       ORDER BY last_fetched_at ASC NULLS FIRST, added_at DESC
        LIMIT ?`,
     )
     .bind(ats, limit)
