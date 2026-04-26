@@ -78,7 +78,7 @@ export async function* fetchWorkday(
     "Accept-Language": "en-US,en;q=0.9",
     "User-Agent": UA_BROWSER,
     Origin: origin,
-    Referer: `${origin}/${target.site}`,
+    Referer: `${origin}/en-US/${target.site}`,
     "Sec-Fetch-Dest": "empty",
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Site": "same-origin",
@@ -93,7 +93,7 @@ export async function* fetchWorkday(
     }),
   );
   if (!listResp.ok) throw new Error(`${source}: list HTTP ${listResp.status}`);
-  if (isHtmlResponse(listResp)) throw new Error(`${source}: bot challenge (HTML body, status ${listResp.status})`);
+  if (isHtmlResponse(listResp)) throw new Error(`${source}: bot challenge (HTML body)`);
 
   const listJson = (await listResp.json()) as unknown;
   const listParsed = ListResponse.safeParse(listJson);
@@ -130,7 +130,7 @@ export async function* fetchWorkday(
     }
 
     const externalId = posting.jobId ?? posting.bulletFields?.[0] ?? posting.externalPath;
-    const applyUrl = `https://${target.tenant}.wd${target.wdN}.myworkdayjobs.com/${target.site}${posting.externalPath}`;
+    const applyUrl = `${origin}/${target.site}${posting.externalPath}`;
 
     yield {
       source,
